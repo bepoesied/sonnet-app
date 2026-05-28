@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.RoomDatabaseConstructor
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
-import pw.kmr.sonnet.data.local.dao.LibraryDao
+import pw.kmr.sonnet.shared.data.local.dao.LibraryDao
 import pw.kmr.sonnet.data.local.entity.DownloadEntity
 import pw.kmr.sonnet.data.local.entity.DownloadedBookEntity
 import pw.kmr.sonnet.data.local.entity.DownloadedChapterEntity

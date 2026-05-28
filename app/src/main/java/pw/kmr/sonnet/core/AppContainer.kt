@@ -1,3 +1,57 @@
+package pw.kmr.sonnet.core
+
+import android.content.Context
+import io.ktor.client.engine.okhttp.OkHttp
+import okhttp3.OkHttpClient
+import okio.FileSystem
+import pw.kmr.sonnet.BuildConfig
+import pw.kmr.sonnet.auth.AuthRepository
+import pw.kmr.sonnet.data.local.SonnetDatabase
+import pw.kmr.sonnet.data.local.buildSonnetDatabase
+import pw.kmr.sonnet.data.local.getSonnetDatabaseBuilder
+import pw.kmr.sonnet.data.preferences.AppSettingsRepository
+import pw.kmr.sonnet.data.preferences.SessionRepository
+import pw.kmr.sonnet.data.preferences.createAppSettingsDataStore
+import pw.kmr.sonnet.data.remote.ServerUrlPolicy
+import pw.kmr.sonnet.player.PlaybackController
+import pw.kmr.sonnet.shared.auth.AuthSessionManager
+import pw.kmr.sonnet.shared.library.LibraryRepository
+import pw.kmr.sonnet.shared.library.libraryDownloadDirectory
+import pw.kmr.sonnet.shared.remote.AuthApiClient
+import pw.kmr.sonnet.shared.remote.AuthenticatedBooksApiClient
+import pw.kmr.sonnet.shared.remote.BooksApiClient
+import pw.kmr.sonnet.shared.remote.SonnetApiClient
+import pw.kmr.sonnet.shared.sync.ProgressSyncer
+import pw.kmr.sonnet.sync.SyncCoordinator
+
+class AppContainer(context: Context) {
+    private val applicationContext = context.applicationContext
+
+    val settingsRepository = AppSettingsRepository(createAppSettingsDataStore(applicationContext))
+    val sessionRepository = SessionRepository(applicationContext)
+
+    val okHttpClient: OkHttpClient = OkHttpClient.Builder().build()
+
+    val database: SonnetDatabase = buildSonnetDatabase(getSonnetDatabaseBuilder(applicationContext))
+
+    val serverUrlPolicy = ServerUrlPolicy(BuildConfig.ENFORCE_HTTPS)
+
+    val sonnetApiClient = SonnetApiClient(OkHttp.create {
+        preconfigured = okHttpClient
+    })
+
+    val authApiClient = AuthApiClient(sonnetApiClient)
+    val rawBooksApiClient = BooksApiClient(sonnetApiClient)
+    val authSessionManager = AuthSessionManager(sessionRepository, authApiClient)
+    val booksApiClient = AuthenticatedBooksApiClient(rawBooksApiClient, authSessionManager)
+
+    val libraryRepository = LibraryRepository(
+        booksApiClient = booksApiClient,
+        libraryDao = database.libraryDao(),
+        booksDirectory = libraryDownloadDirectory(applicationContext),
+        fileSystem = FileSystem.SYSTEM
+    )
+
     val authRepository = AuthRepository(
         authApiClient = authApiClient,
         authSessionManager = authSessionManager,
@@ -5,77 +59,18 @@
         serverUrlPolicy = serverUrlPolicy,
         localLibraryCleaner = libraryRepository
     )
-    )
-    val authApiClient = AuthApiClient(sonnetApiClient)
-    private val rawBooksApiClient = BooksApiClient(sonnetApiClient)
-        authSessionManager = authSessionManager,
-        authSessionManager = authSessionManager,
-        authSessionManager = authSessionManager
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+
     val progressSyncer = ProgressSyncer(
-        booksApiClient = booksApiClient,
-        authApiClient = authApiClient,
-        libraryDao = database.libraryDao(),
-        sessionRepository = sessionRepository
+        remoteDataSource = booksApiClient,
+        playbackProgressDao = database.libraryDao()
     )
-    val syncCoordinator = SyncCoordinator(
-        context = applicationContext,
-        progressSyncer = progressSyncer
-    )
-        libraryDao = database.libraryDao(),
-        progressSyncer = progressSyncer
+
+    val syncCoordinator = SyncCoordinator(applicationContext, progressSyncer)
+
+    val playbackController = PlaybackController(
         context = applicationContext,
         libraryRepository = libraryRepository,
-        libraryDao = database.libraryDao()
-    )
-import pw.kmr.sonnet.data.local.MIGRATION_2_3
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
-        sessionRepository = sessionRepository,
-        context = applicationContext,
-        okHttpClient = okHttpClient
-import pw.kmr.sonnet.data.local.SonnetDatabase
-import pw.kmr.sonnet.data.remote.BooksApiClient
-import pw.kmr.sonnet.library.LibraryRepository
-    val database: SonnetDatabase = Room.databaseBuilder(
-        applicationContext,
-        SonnetDatabase::class.java,
-        "sonnet.db"
-    )
-        .addMigrations(MIGRATION_1_2)
-        .build()
-    val booksApiClient = BooksApiClient(okHttpClient)
-    val libraryRepository = LibraryRepository(
-        booksApiClient = booksApiClient,
         libraryDao = database.libraryDao(),
-        sessionRepository = sessionRepository
+        progressSyncer = progressSyncer
     )
-import pw.kmr.sonnet.auth.AuthRepository
-import pw.kmr.sonnet.data.local.LocalDataCleaner
-import pw.kmr.sonnet.data.remote.AuthApiClient
-    val serverUrlPolicy = ServerUrlPolicy(enforcesHttps = BuildConfig.ENFORCE_HTTPS)
-    val authApiClient = AuthApiClient(okHttpClient)
-    val localDataCleaner = LocalDataCleaner(applicationContext)
-    val authRepository = AuthRepository(
-        authApiClient = authApiClient,
-        sessionRepository = sessionRepository,
-        settingsRepository = settingsRepository,
-        serverUrlPolicy = serverUrlPolicy,
-        localDataCleaner = localDataCleaner
-    )
-
-import android.content.Context
-import okhttp3.OkHttpClient
-import pw.kmr.sonnet.BuildConfig
-import pw.kmr.sonnet.data.preferences.AppSettingsRepository
-import pw.kmr.sonnet.data.preferences.SessionRepository
-import pw.kmr.sonnet.data.remote.ServerUrlPolicy
-
-class AppContainer(context: Context) {
-    private val applicationContext = context.applicationContext
-
-    val settingsRepository = AppSettingsRepository(applicationContext)
-    val sessionRepository = SessionRepository(applicationContext)
-
-    val okHttpClient: OkHttpClient = OkHttpClient.Builder().build()
-    val serverUrlPolicy = ServerUrlPolicy(enforceHttps = BuildConfig.ENFORCE_HTTPS)
 }

@@ -1,51 +1,22 @@
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.utils.io.readAvailable
-import okio.FileSystem
-import okio.Path
-import okio.buffer
-import pw.kmr.sonnet.shared.library.FileDownloadResult
+package pw.kmr.sonnet.shared.remote
 
-    suspend fun download(url: String, targetPath: Path, fileSystem: FileSystem): FileDownloadResult {
-        val response = apiClient.httpClient.get(url)
-        if (!response.status.isSuccess()) {
-            throw ApiException(response.status.value, response.bodyAsText())
-        }
-
-        targetPath.parent?.let(fileSystem::createDirectories)
-        val channel = response.bodyAsChannel()
-        val sink = fileSystem.sink(targetPath).buffer()
-        try {
-            val buffer = ByteArray(8_192)
-            while (true) {
-                val read = channel.readAvailable(buffer)
-                if (read <= 0) break
-                sink.write(buffer, 0, read)
-            }
-        } finally {
-            sink.close()
-        }
-        return FileDownloadResult(response.headers[HttpHeaders.ContentType])
-    }
-    suspend fun download(url: String, targetPath: Path, fileSystem: FileSystem): FileDownloadResult {
-        return booksApiClient.download(url = url, targetPath = targetPath, fileSystem = fileSystem)
-    }
-
-) : ProgressSyncRemoteDataSource {
-    override suspend fun progress(bookId: String): RemoteProgress = withAuth { session ->
-    override suspend fun updateProgress(
-    override suspend fun markComplete(bookId: String) = withAuth { session ->
-    override suspend fun markIncomplete(bookId: String) = withAuth { session ->
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
+import io.ktor.utils.io.readAvailable
+import okio.FileSystem
+import okio.Path
+import okio.buffer
 import pw.kmr.sonnet.shared.auth.AuthSessionManager
+import pw.kmr.sonnet.shared.library.FileDownloadResult
 import pw.kmr.sonnet.shared.model.BookDetail
 import pw.kmr.sonnet.shared.model.BookSummary
 import pw.kmr.sonnet.shared.model.RemoteProgress
@@ -104,6 +75,28 @@ class BooksApiClient(
         updateCompletion(serverUrl = serverUrl, accessToken = accessToken, bookId = bookId, complete = false)
     }
 
+    suspend fun download(url: String, targetPath: Path, fileSystem: FileSystem): FileDownloadResult {
+        val response = apiClient.httpClient.get(url)
+        if (!response.status.isSuccess()) {
+            throw ApiException(response.status.value, response.bodyAsText())
+        }
+
+        targetPath.parent?.let(fileSystem::createDirectories)
+        val channel = response.bodyAsChannel()
+        val sink = fileSystem.sink(targetPath).buffer()
+        try {
+            val buffer = ByteArray(8_192)
+            while (true) {
+                val read = channel.readAvailable(buffer)
+                if (read <= 0) break
+                sink.write(buffer, 0, read)
+            }
+        } finally {
+            sink.close()
+        }
+        return FileDownloadResult(response.headers[HttpHeaders.ContentType])
+    }
+
     private suspend fun updateCompletion(
         serverUrl: String,
         accessToken: String,
@@ -156,6 +149,9 @@ class AuthenticatedBooksApiClient(
     suspend fun markIncomplete(bookId: String) = withAuth { session ->
         booksApiClient.markIncomplete(session.serverUrl, session.accessToken, bookId)
     }
+
+    suspend fun download(url: String, targetPath: Path, fileSystem: FileSystem): FileDownloadResult =
+        booksApiClient.download(url, targetPath, fileSystem)
 
     private suspend fun <T> withAuth(request: suspend (AuthenticatedSession) -> T): T =
         authSessionManager.withAuthRetry(AUTH_ACTION_MESSAGE) { session ->

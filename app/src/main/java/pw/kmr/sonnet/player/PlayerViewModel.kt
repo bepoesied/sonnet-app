@@ -1,13 +1,9 @@
-import kotlinx.coroutines.Job
-    private var loadJob: Job? = null
-        if (loadJob?.isActive == true) return
-        loadJob = viewModelScope.launch { playbackController.load(bookId) }
-    fun keepLocalProgress() = playbackController.keepLocalProgress()
 package pw.kmr.sonnet.player
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -17,16 +13,29 @@ class PlayerViewModel(
 ) : ViewModel() {
     val uiState: StateFlow<PlayerUiState> = playbackController.state
 
-    init {
-        viewModelScope.launch { playbackController.load(bookId) }
+    private var loadJob: Job? = null
+
+    fun load() {
+        if (loadJob?.isActive == true) return
+        loadJob = viewModelScope.launch { playbackController.load(bookId) }
     }
 
     fun playPause() = playbackController.playPause()
+
     fun seekBack() = playbackController.seekBack()
+
     fun seekForward() = playbackController.seekForward()
+
     fun seekTo(positionMs: Long) = playbackController.seekToBookPosition(positionMs)
+
     fun jumpToChapter(chapterId: String) = playbackController.jumpToChapter(chapterId)
+
     fun setSleepTimer(timer: SleepTimerState) = playbackController.setSleepTimer(timer)
+
+    fun useRemoteProgress() = playbackController.useRemoteProgress()
+
+    fun keepLocalProgress() = playbackController.keepLocalProgress()
+
     fun clearError() = playbackController.clearError()
 
     class Factory(

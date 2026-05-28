@@ -1,4 +1,5 @@
-import pw.kmr.sonnet.shared.sync.ProgressSyncer
+package pw.kmr.sonnet.sync
+
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
@@ -7,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import pw.kmr.sonnet.shared.sync.ProgressSyncer
 
 class SyncCoordinator(
     context: Context,
@@ -40,5 +42,3 @@ class SyncCoordinator(
         const val MIN_NETWORK_SYNC_INTERVAL_MS = 60_000L
     }
 }
-
-class SyncCoordinator
