@@ -450,8 +450,8 @@ private fun Long.formatDuration(): String {
     val minutes = (totalSeconds % 3600L) / 60L
     val seconds = totalSeconds % 60L
     return if (hours > 0) {
-        "%d:%02d:%02d".format(hours, minutes, seconds)
+        java.lang.String.format(java.util.Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
     } else {
-        "%d:%02d".format(minutes, seconds)
+        java.lang.String.format(java.util.Locale.US, "%d:%02d", minutes, seconds)
     }
 }

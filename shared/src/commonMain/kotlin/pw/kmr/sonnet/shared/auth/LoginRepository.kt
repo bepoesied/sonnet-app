@@ -76,7 +76,10 @@ class LoginRepository(
         return try {
             val url = Url(serverUrl)
             val scheme = url.protocol.name
-            url.host.isNotEmpty() && scheme in setOf("http", "https") && (!enforcesHttps || scheme == "https")
+            val host = url.host
+            host.isNotEmpty() &&
+                scheme in setOf("http", "https") &&
+                (!enforcesHttps || scheme == "https")
         } catch (_: Exception) {
             false
         }

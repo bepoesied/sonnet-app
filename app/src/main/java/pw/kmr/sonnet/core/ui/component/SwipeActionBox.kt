@@ -40,8 +40,8 @@ fun SwipeActionBox(
     val thresholdPx = with(density) { positionalThreshold.toPx() }
     val dragDeadZonePx = with(density) { dragDeadZone.toPx() }
 
-    var offsetPx by remember { mutableFloatStateOf(0f) }
-    var pendingDragPx by remember { mutableFloatStateOf(0f) }
+    var offsetPx by remember(revealedDirection) { mutableFloatStateOf(0f) }
+    var pendingDragPx by remember(revealedDirection) { mutableFloatStateOf(0f) }
 
     LaunchedEffect(revealedDirection, actionWidthPx) {
         val targetOffset = when (revealedDirection) {

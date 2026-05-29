@@ -88,8 +88,14 @@ class LoginViewModel(
         }
     }
 
-    private fun Throwable.userMessage(): String = message?.takeIf { it.isNotBlank() }
-        ?: "Sign in failed. Check the server URL and try again."
+    private fun Throwable.userMessage(): String = when {
+        message?.contains("Unable to resolve host") == true -> "Cannot reach the server. Check your internet connection."
+        message?.contains("timeout", ignoreCase = true) == true -> "Server took too long to respond. Try again."
+        message?.contains("SSL", ignoreCase = true) == true -> "Secure connection failed. Check the server URL."
+        message?.contains("401") == true || message?.contains("403") == true -> "Authentication failed. Sign in again."
+        message?.contains("404") == true -> "Server endpoint not found. Check the server URL."
+        else -> "Sign in failed. Check the server URL and try again."
+    }
 
     private companion object {
         const val PENDING_LOGIN = "pending_login"

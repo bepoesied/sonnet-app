@@ -16,13 +16,17 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 import kotlin.math.max
 import pw.kmr.sonnet.shared.data.local.dao.LibraryDao
@@ -45,6 +49,7 @@ private const val PROGRESS_TICK_MS = 1_000L
 private const val PERIODIC_SAVE_MS = 5_000L
 private const val PERIODIC_SYNC_MS = 60_000L
 const val SEEK_INCREMENT_MS = 10_000L
+private const val REMOTE_PROGRESS_DIFF_THRESHOLD_MS = 10_000L
 
 class PlaybackController(
     context: Context,
@@ -64,9 +69,10 @@ class PlaybackController(
     private var controllerFuture: ListenableFuture<MediaController>? = null
 
     @Volatile private var loadedBook: DownloadedBook? = null
-    @Volatile private var saveInFlight = false
+    private val saveMutex = Mutex()
     @Volatile private var forceSyncAfterSave = false
     @Volatile private var resumeCheckInFlight = false
+    private var syncJob: Job? = null
     private var lastPeriodicProgressSaveMs = 0L
     private var lastPeriodicProgressSyncMs = 0L
     private var chapterEndSleepEnabled = false
@@ -254,6 +260,7 @@ class PlaybackController(
         controller = null
         controllerFuture?.cancel(true)
         controllerFuture = null
+        scope.cancel()
         _state.value = PlayerUiState()
     }
 
@@ -290,12 +297,12 @@ class PlaybackController(
     private suspend fun reconcileProgressOnOpen(book: DownloadedBook): Long {
         val localProgress = libraryDao.playbackProgress(book.id)
         val remoteProgress = progressSyncer.remoteProgress(book.id)
-        val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis
+        val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis ?: 0L
         val remotePosition = remoteProgress?.chapterId?.let { chapterId ->
             book.positionFor(chapterId, remoteProgress.offsetMillis)
         }
 
-        if (remoteUpdatedAt != null && remotePosition != null) {
+        if (remoteProgress != null && remoteUpdatedAt > 0L && remotePosition != null) {
             val localUpdatedAt = localProgress?.updatedAtEpochMillis ?: 0L
             if (remoteUpdatedAt > localUpdatedAt) {
                 val chapterProgress = book.progressAt(remotePosition)
@@ -341,15 +348,15 @@ class PlaybackController(
         return try {
             val localProgress = libraryDao.playbackProgress(book.id)
             val remoteProgress = progressSyncer.remoteProgress(book.id)
-            val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis
+            val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis ?: 0L
             val remotePosition = remoteProgress?.chapterId?.let { chapterId ->
                 book.positionFor(chapterId, remoteProgress.offsetMillis)
             }
 
-            if (remoteUpdatedAt != null && remotePosition != null) {
+            if (remoteProgress != null && remoteUpdatedAt > 0L && remotePosition != null) {
                 val localUpdatedAt = localProgress?.updatedAtEpochMillis ?: 0L
                 val localPosition = localProgress?.positionMillis ?: 0L
-                if (remoteUpdatedAt > localUpdatedAt && abs(remotePosition - localPosition) >= 10_000L) {
+                if (remoteUpdatedAt > localUpdatedAt && abs(remotePosition - localPosition) >= REMOTE_PROGRESS_DIFF_THRESHOLD_MS) {
                     showRemoteProgressPrompt(book, localPosition, remotePosition, remoteUpdatedAt)
                     false
                 } else {
@@ -386,7 +393,7 @@ class PlaybackController(
     }
 
     private fun saveProgressSoon(forceSync: Boolean = false) {
-        if (saveInFlight) {
+        if (saveMutex.isLocked) {
             if (forceSync) forceSyncAfterSave = true
             return
         }
@@ -396,26 +403,26 @@ class PlaybackController(
         val durationMs = book.totalDurationMs()
         val chapterProgress = book.progressAt(positionMs)
 
-        saveInFlight = true
         scope.launch(Dispatchers.IO) {
-            delay(SAVE_DEBOUNCE_MS)
-            libraryDao.upsertPlaybackProgress(
-                PlaybackProgressEntity(
-                    libraryItemId = book.id,
-                    chapterId = chapterProgress.chapterId,
-                    chapterOffsetMillis = chapterProgress.chapterOffsetMs,
-                    positionMillis = positionMs,
-                    durationMillis = durationMs,
-                    updatedAtEpochMillis = System.currentTimeMillis(),
-                    isCompleted = false,
-                    pendingSync = true
+            saveMutex.withLock {
+                delay(SAVE_DEBOUNCE_MS)
+                libraryDao.upsertPlaybackProgress(
+                    PlaybackProgressEntity(
+                        libraryItemId = book.id,
+                        chapterId = chapterProgress.chapterId,
+                        chapterOffsetMillis = chapterProgress.chapterOffsetMs,
+                        positionMillis = positionMs,
+                        durationMillis = durationMs,
+                        updatedAtEpochMillis = System.currentTimeMillis(),
+                        isCompleted = false,
+                        pendingSync = true
+                    )
                 )
-            )
-            saveInFlight = false
-            val shouldSync = forceSync || forceSyncAfterSave
-            forceSyncAfterSave = false
-            if (shouldSync) {
-                progressSyncer.syncBook(book.id)
+                val shouldSync = forceSync || forceSyncAfterSave
+                forceSyncAfterSave = false
+                if (shouldSync) {
+                    progressSyncer.syncBook(book.id)
+                }
             }
         }
     }
@@ -435,7 +442,9 @@ class PlaybackController(
             }
             if (c.isPlaying && now - lastPeriodicProgressSyncMs >= PERIODIC_SYNC_MS) {
                 lastPeriodicProgressSyncMs = now
-                scope.launch(Dispatchers.IO) { progressSyncer.syncPending() }
+                if (syncJob?.isActive != true) {
+                    syncJob = scope.launch(Dispatchers.IO) { progressSyncer.syncPending() }
+                }
             }
             delay(PROGRESS_TICK_MS)
         }

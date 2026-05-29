@@ -51,7 +51,7 @@ private class MiniPlayerDecoratedScene<T : Any>(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 104.dp)
+                    .padding(bottom = MINI_PLAYER_HEIGHT)
             ) {
                 inner.content()
             }
@@ -62,5 +62,9 @@ private class MiniPlayerDecoratedScene<T : Any>(
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
+    }
+
+    companion object {
+        private val MINI_PLAYER_HEIGHT = 104.dp
     }
 }

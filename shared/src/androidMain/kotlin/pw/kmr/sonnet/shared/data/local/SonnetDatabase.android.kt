@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import kotlinx.coroutines.Dispatchers
-import kotlin.coroutines.CoroutineContext
 
 fun getSonnetDatabaseBuilder(context: Context): RoomDatabase.Builder<SonnetDatabase> {
     val appContext = context.applicationContext
