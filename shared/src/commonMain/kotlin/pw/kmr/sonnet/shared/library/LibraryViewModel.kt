@@ -76,12 +76,15 @@ class LibraryViewModel(
 
     fun swipeCompletionAction(book: LibraryBook) {
         viewModelScope.launch {
-            runCatching { repository.setCompletion(book, !book.isCompleted) }
-                .onFailure { throwable ->
-                    refreshState.value = refreshState.value.copy(
-                        lastErrorMessage = throwable.message ?: "Unable to update completion state."
-                    )
-                }
+            try {
+                repository.setCompletion(book, !book.isCompleted)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                refreshState.value = refreshState.value.copy(
+                    lastErrorMessage = throwable.message ?: "Unable to update completion state."
+                )
+            }
         }
     }
 

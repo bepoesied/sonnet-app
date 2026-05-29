@@ -17,12 +17,15 @@ import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 import kotlin.math.max
 import pw.kmr.sonnet.shared.data.local.dao.LibraryDao
@@ -64,7 +67,7 @@ class PlaybackController(
     private var controllerFuture: ListenableFuture<MediaController>? = null
 
     @Volatile private var loadedBook: DownloadedBook? = null
-    @Volatile private var saveInFlight = false
+    private val saveMutex = Mutex()
     @Volatile private var forceSyncAfterSave = false
     @Volatile private var resumeCheckInFlight = false
     private var lastPeriodicProgressSaveMs = 0L
@@ -254,6 +257,7 @@ class PlaybackController(
         controller = null
         controllerFuture?.cancel(true)
         controllerFuture = null
+        scope.cancel()
         _state.value = PlayerUiState()
     }
 
@@ -386,7 +390,7 @@ class PlaybackController(
     }
 
     private fun saveProgressSoon(forceSync: Boolean = false) {
-        if (saveInFlight) {
+        if (saveMutex.isLocked) {
             if (forceSync) forceSyncAfterSave = true
             return
         }
@@ -396,26 +400,26 @@ class PlaybackController(
         val durationMs = book.totalDurationMs()
         val chapterProgress = book.progressAt(positionMs)
 
-        saveInFlight = true
         scope.launch(Dispatchers.IO) {
-            delay(SAVE_DEBOUNCE_MS)
-            libraryDao.upsertPlaybackProgress(
-                PlaybackProgressEntity(
-                    libraryItemId = book.id,
-                    chapterId = chapterProgress.chapterId,
-                    chapterOffsetMillis = chapterProgress.chapterOffsetMs,
-                    positionMillis = positionMs,
-                    durationMillis = durationMs,
-                    updatedAtEpochMillis = System.currentTimeMillis(),
-                    isCompleted = false,
-                    pendingSync = true
+            saveMutex.withLock {
+                delay(SAVE_DEBOUNCE_MS)
+                libraryDao.upsertPlaybackProgress(
+                    PlaybackProgressEntity(
+                        libraryItemId = book.id,
+                        chapterId = chapterProgress.chapterId,
+                        chapterOffsetMillis = chapterProgress.chapterOffsetMs,
+                        positionMillis = positionMs,
+                        durationMillis = durationMs,
+                        updatedAtEpochMillis = System.currentTimeMillis(),
+                        isCompleted = false,
+                        pendingSync = true
+                    )
                 )
-            )
-            saveInFlight = false
-            val shouldSync = forceSync || forceSyncAfterSave
-            forceSyncAfterSave = false
-            if (shouldSync) {
-                progressSyncer.syncBook(book.id)
+                val shouldSync = forceSync || forceSyncAfterSave
+                forceSyncAfterSave = false
+                if (shouldSync) {
+                    progressSyncer.syncBook(book.id)
+                }
             }
         }
     }
