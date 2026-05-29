@@ -48,6 +48,7 @@ private const val PROGRESS_TICK_MS = 1_000L
 private const val PERIODIC_SAVE_MS = 5_000L
 private const val PERIODIC_SYNC_MS = 60_000L
 const val SEEK_INCREMENT_MS = 10_000L
+private const val REMOTE_PROGRESS_DIFF_THRESHOLD_MS = 10_000L
 
 class PlaybackController(
     context: Context,
@@ -353,7 +354,7 @@ class PlaybackController(
             if (remoteUpdatedAt != null && remotePosition != null) {
                 val localUpdatedAt = localProgress?.updatedAtEpochMillis ?: 0L
                 val localPosition = localProgress?.positionMillis ?: 0L
-                if (remoteUpdatedAt > localUpdatedAt && abs(remotePosition - localPosition) >= 10_000L) {
+                if (remoteUpdatedAt > localUpdatedAt && abs(remotePosition - localPosition) >= REMOTE_PROGRESS_DIFF_THRESHOLD_MS) {
                     showRemoteProgressPrompt(book, localPosition, remotePosition, remoteUpdatedAt)
                     false
                 } else {
