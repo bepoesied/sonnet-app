@@ -32,7 +32,10 @@ class MainActivity : ComponentActivity() {
                 SonnetApp(
                     uiState = uiState,
                     appContainer = appContainer,
-                    onLogout = appViewModel::logout,
+                    onLogout = {
+                        appContainer.playbackController.shutdown()
+                        appViewModel.logout()
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
             }

@@ -306,6 +306,8 @@ private fun CoverImage(book: LibraryBook, modifier: Modifier = Modifier) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(cover)
+                    .diskCacheKey("cover-${book.id}")
+                    .memoryCacheKey("cover-${book.id}")
                     .crossfade(true)
                     .build(),
                 contentDescription = "${book.title} cover",

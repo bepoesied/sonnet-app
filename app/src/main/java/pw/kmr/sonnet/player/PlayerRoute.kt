@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -183,10 +182,10 @@ private fun PlayerContent(
 ) {
     var showChapters by remember { mutableStateOf(false) }
     var showSleepTimer by remember { mutableStateOf(false) }
-    var scrubPosition by remember(uiState.bookId) { mutableLongStateOf(uiState.positionMs) }
+    var scrubPosition by remember(uiState.currentChapterId) { mutableLongStateOf(uiState.currentChapterPositionMs) }
 
-    LaunchedEffect(uiState.positionMs) {
-        scrubPosition = uiState.positionMs
+    LaunchedEffect(uiState.currentChapterPositionMs) {
+        scrubPosition = uiState.currentChapterPositionMs
     }
 
     if (uiState.resumePrompt != null) {
@@ -254,8 +253,8 @@ private fun PlayerContent(
         Slider(
             value = scrubPosition.toFloat(),
             onValueChange = { scrubPosition = it.roundToLong() },
-            onValueChangeFinished = { onSeekTo(scrubPosition) },
-            valueRange = 0f..max(uiState.durationMs, 1L).toFloat(),
+            onValueChangeFinished = { onSeekTo(uiState.currentChapterStartPositionMs + scrubPosition) },
+            valueRange = 0f..max(uiState.currentChapterDurationMs, 1L).toFloat(),
             modifier = progressModifier.fillMaxWidth()
         )
         Row(
@@ -263,7 +262,7 @@ private fun PlayerContent(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(text = scrubPosition.formatDuration(), style = MaterialTheme.typography.labelMedium)
-            Text(text = uiState.durationMs.formatDuration(), style = MaterialTheme.typography.labelMedium)
+            Text(text = uiState.currentChapterDurationMs.formatDuration(), style = MaterialTheme.typography.labelMedium)
         }
         Spacer(modifier = Modifier.height(28.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.CenterVertically) {

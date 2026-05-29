@@ -17,7 +17,6 @@ import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,19 +59,12 @@ class PlaybackController(
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
     private var controller: MediaController? = null
-    private val controllerFuture: ListenableFuture<MediaController> =
-        MediaController.Builder(
-            applicationContext,
-            SessionToken(
-                applicationContext,
-                ComponentName(applicationContext, SonnetMediaSessionService::class.java)
-            )
-        ).buildAsync()
+    private var controllerFuture: ListenableFuture<MediaController>? = null
 
-    private var loadedBook: DownloadedBook? = null
-    private var saveInFlight = false
-    private var forceSyncAfterSave = false
-    private var resumeCheckInFlight = false
+    @Volatile private var loadedBook: DownloadedBook? = null
+    @Volatile private var saveInFlight = false
+    @Volatile private var forceSyncAfterSave = false
+    @Volatile private var resumeCheckInFlight = false
     private var lastPeriodicProgressSaveMs = 0L
     private var lastPeriodicProgressSyncMs = 0L
     private var chapterEndSleepEnabled = false
@@ -105,8 +97,18 @@ class PlaybackController(
     }
 
     init {
+        connectToService()
+    }
+
+    private fun connectToService() {
+        val token = SessionToken(
+            applicationContext,
+            ComponentName(applicationContext, SonnetMediaSessionService::class.java)
+        )
+        val future = MediaController.Builder(applicationContext, token).buildAsync()
+        controllerFuture = future
         Futures.addCallback(
-            controllerFuture,
+            future,
             object : FutureCallback<MediaController> {
                 override fun onSuccess(result: MediaController) {
                     controller = result
@@ -178,36 +180,35 @@ class PlaybackController(
                     applicationContext,
                     Intent(applicationContext, SonnetMediaSessionService::class.java)
                 )
-                if (c != null) {
-                    c.play()
-                } else {
-                    pendingPlayAfterConnect = true
-                }
+                controller?.play() ?: run { pendingPlayAfterConnect = true }
             }
         }
     }
 
     fun seekBack() {
-        val from = currentBookPositionMs()
-        controller?.seekBack()
-        val to = currentBookPositionMs()
+        val c = controller ?: return
+        val from = currentBookPositionMs(c)
+        c.seekBack()
+        val to = currentBookPositionMs(c)
         consumeSleepTimerForSeek(from, to)
         publishState()
     }
 
     fun seekForward() {
-        val from = currentBookPositionMs()
-        controller?.seekForward()
-        val to = currentBookPositionMs()
+        val c = controller ?: return
+        val from = currentBookPositionMs(c)
+        c.seekForward()
+        val to = currentBookPositionMs(c)
         consumeSleepTimerForSeek(from, to)
         publishState()
     }
 
     fun seekToBookPosition(positionMs: Long) {
         val book = loadedBook ?: return
-        val from = currentBookPositionMs()
+        val c = controller ?: return
+        val from = currentBookPositionMs(c)
         val target = book.seekTargetFor(positionMs)
-        controller?.seekTo(target.chapterIndex, target.chapterPositionMs)
+        c.seekTo(target.chapterIndex, target.chapterPositionMs)
         consumeSleepTimerForSeek(from, positionMs)
         publishState()
     }
@@ -228,18 +229,25 @@ class PlaybackController(
         _state.update { it.copy(errorMessage = null) }
     }
 
-    fun release() {
-        controller?.removeListener(playerListener)
-        controller?.release()
+    fun shutdown() {
+        val c = controller ?: return
+        c.pause()
+        saveProgressSoon(forceSync = false)
+        loadedBook = null
+        c.removeListener(playerListener)
+        c.release()
         controller = null
-        scope.cancel()
+        controllerFuture?.cancel(true)
+        controllerFuture = null
+        _state.value = PlayerUiState()
     }
 
     fun useRemoteProgress() {
         val book = loadedBook ?: return
+        val c = controller ?: return
         val prompt = state.value.resumePrompt ?: return
         val target = book.seekTargetFor(prompt.remotePositionMs)
-        controller?.seekTo(target.chapterIndex, target.chapterPositionMs)
+        c.seekTo(target.chapterIndex, target.chapterPositionMs)
         val chapterProgress = book.progressAt(prompt.remotePositionMs)
         _state.update { it.copy(resumePrompt = null) }
         scope.launch(Dispatchers.IO) {
@@ -369,7 +377,7 @@ class PlaybackController(
         }
 
         val book = loadedBook ?: return
-        val positionMs = currentBookPositionMs()
+        val positionMs = currentBookPositionMs(controller ?: return)
         val durationMs = book.totalDurationMs()
         val chapterProgress = book.progressAt(positionMs)
 
@@ -399,8 +407,12 @@ class PlaybackController(
 
     private suspend fun progressTicker() {
         while (true) {
+            val c = controller
+            if (c == null) {
+                delay(PROGRESS_TICK_MS)
+                continue
+            }
             publishState()
-            val c = controller ?: run { delay(PROGRESS_TICK_MS); continue }
             val now = System.currentTimeMillis()
             if (c.isPlaying && now - lastPeriodicProgressSaveMs >= PERIODIC_SAVE_MS) {
                 lastPeriodicProgressSaveMs = now
@@ -419,7 +431,7 @@ class PlaybackController(
             val c = controller
             val timer = state.value.sleepTimer
             if (timer is SleepTimerState.Countdown && c != null && c.isPlaying) {
-                val position = currentBookPositionMs()
+                val position = currentBookPositionMs(c)
                 val last = lastSleepPositionMs
                 if (last != null && position > last) {
                     val remaining = timer.remainingMs - (position - last)
@@ -471,7 +483,6 @@ class PlaybackController(
         val position = book?.bookPositionFor(currentChapterIndex, playerPosition) ?: playerPosition
         val duration = book?.totalDurationMs() ?: c?.duration?.takeIf { it > 0L } ?: 0L
         val currentChapterStart = book?.chapterStartPositionMs(currentChapterIndex) ?: 0L
-        val currentChapterPosition = playerPosition
         val currentChapterDuration = currentChapter?.durationMs ?: 0L
 
         _state.update {
@@ -484,7 +495,7 @@ class PlaybackController(
                 currentChapterId = currentChapter?.id,
                 currentChapterTitle = currentChapter?.title.orEmpty(),
                 currentChapterStartPositionMs = currentChapterStart,
-                currentChapterPositionMs = currentChapterPosition,
+                currentChapterPositionMs = playerPosition,
                 currentChapterDurationMs = currentChapterDuration,
                 isPlaying = c?.isPlaying == true,
                 positionMs = position,
@@ -494,8 +505,7 @@ class PlaybackController(
         }
     }
 
-    private fun currentBookPositionMs(): Long {
-        val c = controller ?: return 0L
+    private fun currentBookPositionMs(c: MediaController): Long {
         val book = loadedBook ?: return max(c.currentPosition, 0L)
         return book.bookPositionFor(
             chapterIndex = c.currentMediaItemIndex,
