@@ -62,17 +62,6 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(connection: SQLiteConnection) {
         connection.execSQL(
             """
-            CREATE TABLE IF NOT EXISTS playback_progress (
-                libraryItemId TEXT NOT NULL PRIMARY KEY,
-                positionMillis INTEGER NOT NULL DEFAULT 0,
-                durationMillis INTEGER,
-                updatedAtEpochMillis INTEGER NOT NULL DEFAULT 0,
-                pendingSync INTEGER NOT NULL DEFAULT 0
-            )
-            """.trimIndent()
-        )
-        connection.execSQL(
-            """
             CREATE TABLE IF NOT EXISTS playback_progress_new (
                 libraryItemId TEXT NOT NULL PRIMARY KEY,
                 chapterId TEXT,
