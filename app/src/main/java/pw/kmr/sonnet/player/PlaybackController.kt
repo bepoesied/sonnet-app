@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
 import pw.kmr.sonnet.shared.data.local.dao.LibraryDao
-import pw.kmr.sonnet.data.local.entity.PlaybackProgressEntity
+import pw.kmr.sonnet.shared.data.local.entity.PlaybackProgressEntity
 import pw.kmr.sonnet.shared.library.LibraryRepository
 import pw.kmr.sonnet.shared.model.DownloadedBook
 import pw.kmr.sonnet.shared.playback.bookPositionFor

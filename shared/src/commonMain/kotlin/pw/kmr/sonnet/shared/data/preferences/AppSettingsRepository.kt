@@ -1,4 +1,4 @@
-package pw.kmr.sonnet.data.preferences
+package pw.kmr.sonnet.shared.data.preferences
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences

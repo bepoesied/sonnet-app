@@ -1,12 +1,10 @@
-package pw.kmr.sonnet.data.local
+package pw.kmr.sonnet.shared.data.local
 
 import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.CoroutineContext
-
-actual val sonnetDatabaseCoroutineContext: CoroutineContext = Dispatchers.IO
 
 fun getSonnetDatabaseBuilder(context: Context): RoomDatabase.Builder<SonnetDatabase> {
     val appContext = context.applicationContext

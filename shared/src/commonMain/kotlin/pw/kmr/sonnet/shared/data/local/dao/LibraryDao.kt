@@ -5,14 +5,14 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
-import pw.kmr.sonnet.data.local.entity.DownloadEntity
-import pw.kmr.sonnet.data.local.entity.DownloadedBookEntity
-import pw.kmr.sonnet.data.local.entity.DownloadedChapterEntity
-import pw.kmr.sonnet.data.local.entity.LibraryItemEntity
-import pw.kmr.sonnet.data.local.entity.PlaybackProgressEntity
+import pw.kmr.sonnet.shared.data.local.entity.DownloadEntity
+import pw.kmr.sonnet.shared.data.local.entity.DownloadedBookEntity
+import pw.kmr.sonnet.shared.data.local.entity.DownloadedChapterEntity
+import pw.kmr.sonnet.shared.data.local.entity.LibraryItemEntity
+import pw.kmr.sonnet.shared.data.local.entity.PlaybackProgressEntity
 
 @Dao
-interface LibraryDao {
+interface LibraryDao : PlaybackProgressDao {
     @Query("SELECT * FROM library_items ORDER BY title COLLATE NOCASE")
     fun observeLibraryItems(): Flow<List<LibraryItemEntity>>
 
@@ -29,16 +29,16 @@ interface LibraryDao {
     fun observePlaybackProgress(): Flow<List<PlaybackProgressEntity>>
 
     @Query("SELECT * FROM playback_progress WHERE libraryItemId = :bookId")
-    suspend fun playbackProgress(bookId: String): PlaybackProgressEntity?
+    override suspend fun playbackProgress(bookId: String): PlaybackProgressEntity?
 
     @Query("SELECT * FROM playback_progress WHERE pendingSync = 1 ORDER BY updatedAtEpochMillis")
-    suspend fun pendingPlaybackProgress(): List<PlaybackProgressEntity>
+    override suspend fun pendingPlaybackProgress(): List<PlaybackProgressEntity>
 
     @Upsert
     suspend fun upsertPlaybackProgress(progress: PlaybackProgressEntity)
 
     @Query("UPDATE playback_progress SET pendingSync = 0 WHERE libraryItemId = :bookId AND updatedAtEpochMillis = :updatedAtEpochMillis")
-    suspend fun markPlaybackProgressSynced(bookId: String, updatedAtEpochMillis: Long)
+    override suspend fun markPlaybackProgressSynced(bookId: String, updatedAtEpochMillis: Long)
 
     @Query("DELETE FROM playback_progress WHERE libraryItemId = :bookId")
     suspend fun deletePlaybackProgress(bookId: String)

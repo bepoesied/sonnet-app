@@ -74,6 +74,7 @@ dependencies {
     implementation(libs.androidx.media3.ui.compose)
     implementation(libs.appauth)
     implementation(libs.compose.shimmer)
+    implementation(libs.google.material)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

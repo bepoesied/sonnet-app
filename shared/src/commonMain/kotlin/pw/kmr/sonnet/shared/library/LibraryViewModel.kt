@@ -91,8 +91,8 @@ class LibraryViewModel(
         downloadJobs[book.id] = viewModelScope.launch {
             try {
                 repository.downloadBook(book.id)
-            } catch (_: CancellationException) {
-                throw
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             } catch (throwable: Throwable) {
                 refreshState.value = refreshState.value.copy(
                     lastErrorMessage = throwable.message ?: "Unable to download ${book.title}."
@@ -127,8 +127,8 @@ class LibraryViewModel(
                 downloadJobs[bookId] = launch {
                     try {
                         repository.downloadBook(bookId, restartInProgress = true)
-                    } catch (_: CancellationException) {
-                        throw
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
                     } catch (throwable: Throwable) {
                         refreshState.value = refreshState.value.copy(
                             lastErrorMessage = throwable.message ?: "Unable to resume a download."

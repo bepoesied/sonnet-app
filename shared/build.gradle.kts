@@ -78,6 +78,7 @@ kotlin {
                 implementation(libs.kotlinx.datetime)
                 implementation(libs.kotlinx.serialization.json)
                 api(libs.androidx.lifecycle.viewmodel)
+                implementation(libs.androidx.datastore)
                 implementation(libs.androidx.datastore.preferences)
                 implementation(libs.androidx.room.runtime)
                 implementation(libs.androidx.sqlite.bundled)

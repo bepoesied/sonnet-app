@@ -113,7 +113,7 @@ class BooksApiClient(
 class AuthenticatedBooksApiClient(
     private val booksApiClient: BooksApiClient,
     private val authSessionManager: AuthSessionManager
-) {
+) : ProgressSyncRemoteDataSource {
     suspend fun books(): List<BookSummary> = withAuth { session ->
         booksApiClient.books(session.serverUrl, session.accessToken)
     }
@@ -122,11 +122,11 @@ class AuthenticatedBooksApiClient(
         booksApiClient.book(session.serverUrl, session.accessToken, bookId)
     }
 
-    suspend fun progress(bookId: String): RemoteProgress = withAuth { session ->
+    override suspend fun progress(bookId: String): RemoteProgress = withAuth { session ->
         booksApiClient.progress(session.serverUrl, session.accessToken, bookId)
     }
 
-    suspend fun updateProgress(
+    override suspend fun updateProgress(
         bookId: String,
         chapterId: String,
         offsetMs: Long,
@@ -142,11 +142,11 @@ class AuthenticatedBooksApiClient(
         )
     }
 
-    suspend fun markComplete(bookId: String) = withAuth { session ->
+    override suspend fun markComplete(bookId: String) = withAuth { session ->
         booksApiClient.markComplete(session.serverUrl, session.accessToken, bookId)
     }
 
-    suspend fun markIncomplete(bookId: String) = withAuth { session ->
+    override suspend fun markIncomplete(bookId: String) = withAuth { session ->
         booksApiClient.markIncomplete(session.serverUrl, session.accessToken, bookId)
     }
 

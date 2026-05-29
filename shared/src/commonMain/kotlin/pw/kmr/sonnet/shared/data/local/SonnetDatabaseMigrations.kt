@@ -1,4 +1,4 @@
-package pw.kmr.sonnet.data.local
+package pw.kmr.sonnet.shared.data.local
 
 import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection

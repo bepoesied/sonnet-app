@@ -1,4 +1,4 @@
-package pw.kmr.sonnet.data.local.entity
+package pw.kmr.sonnet.shared.data.local.entity
 
 import androidx.room.Entity
 
