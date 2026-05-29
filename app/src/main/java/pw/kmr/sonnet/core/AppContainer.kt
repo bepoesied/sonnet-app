@@ -74,4 +74,11 @@ class AppContainer(context: Context) {
         libraryDao = database.libraryDao(),
         progressSyncer = progressSyncer
     )
+
+    fun dispose() {
+        playbackController.shutdown()
+        sonnetApiClient.close()
+        (platformAuthProvider as? AppAuthPlatformProvider)?.dispose()
+        database.close()
+    }
 }
