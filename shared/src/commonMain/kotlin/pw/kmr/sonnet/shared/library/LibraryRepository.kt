@@ -1,7 +1,9 @@
 package pw.kmr.sonnet.shared.library
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
@@ -36,10 +38,10 @@ class LibraryRepository(
 
     override suspend fun interruptedDownloadBookIds(): List<String> = libraryDao.downloadingBookIds()
 
-    override suspend fun downloadBook(bookId: String, restartInProgress: Boolean) {
+    override suspend fun downloadBook(bookId: String, restartInProgress: Boolean) = withContext(Dispatchers.IO) {
         val existing = libraryDao.download(bookId)
-        if (existing?.state == "complete") return
-        if (existing?.state == "downloading" && !restartInProgress) return
+        if (existing?.state == "complete") return@withContext
+        if (existing?.state == "downloading" && !restartInProgress) return@withContext
 
         val book = booksApiClient.book(bookId)
         require(book.chapters.isNotEmpty()) { "Book has no chapters to download." }

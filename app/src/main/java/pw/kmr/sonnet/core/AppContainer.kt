@@ -24,6 +24,7 @@ import pw.kmr.sonnet.shared.remote.BooksApiClient
 import pw.kmr.sonnet.shared.remote.SonnetApiClient
 import pw.kmr.sonnet.shared.sync.ProgressSyncer
 import pw.kmr.sonnet.sync.SyncCoordinator
+import java.util.concurrent.TimeUnit
 
 class AppContainer(context: Context) {
     private val applicationContext = context.applicationContext
@@ -31,7 +32,11 @@ class AppContainer(context: Context) {
     val settingsRepository = AppSettingsRepository(createAppSettingsDataStore(applicationContext))
     val sessionRepository = SessionRepository(applicationContext)
 
-    val okHttpClient: OkHttpClient = OkHttpClient.Builder().build()
+    val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .build()
 
     val database: SonnetDatabase = buildSonnetDatabase(getSonnetDatabaseBuilder(applicationContext))
 
