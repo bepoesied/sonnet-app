@@ -71,6 +71,7 @@ class PlaybackController(
     private val saveMutex = Mutex()
     @Volatile private var forceSyncAfterSave = false
     @Volatile private var resumeCheckInFlight = false
+    private var syncJob: Job? = null
     private var lastPeriodicProgressSaveMs = 0L
     private var lastPeriodicProgressSyncMs = 0L
     private var chapterEndSleepEnabled = false
@@ -440,7 +441,9 @@ class PlaybackController(
             }
             if (c.isPlaying && now - lastPeriodicProgressSyncMs >= PERIODIC_SYNC_MS) {
                 lastPeriodicProgressSyncMs = now
-                scope.launch(Dispatchers.IO) { progressSyncer.syncPending() }
+                if (syncJob?.isActive != true) {
+                    syncJob = scope.launch(Dispatchers.IO) { progressSyncer.syncPending() }
+                }
             }
             delay(PROGRESS_TICK_MS)
         }
