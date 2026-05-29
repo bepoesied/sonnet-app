@@ -4,6 +4,20 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 
+/**
+ * Database migration chain:
+ *
+ * v1 → v2: Add isCompleted to library_items
+ * v2 → v3: Add errorMessage to downloads; create downloaded_books, downloaded_chapters,
+ *           playback_progress tables
+ * v3 → v4: Recreate playback_progress with chapterId, chapterOffsetMillis, isCompleted
+ *           columns (using temp table copy pattern)
+ * v4 → v5: Add isCompleted column to playback_progress (for databases that were at v4
+ *           without going through v3→v4 which already includes isCompleted)
+ *
+ * New installs get all migrations applied sequentially.
+ */
+
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(connection: SQLiteConnection) {
         connection.execSQL("ALTER TABLE library_items ADD COLUMN isCompleted INTEGER NOT NULL DEFAULT 0")
