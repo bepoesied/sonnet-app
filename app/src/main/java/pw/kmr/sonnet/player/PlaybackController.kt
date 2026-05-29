@@ -55,8 +55,10 @@ class PlaybackController(
     private val applicationContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(PlayerUiState())
+    private val _pendingPlayerRequest = MutableStateFlow<String?>(null)
 
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
+    val pendingPlayerRequest: StateFlow<String?> = _pendingPlayerRequest.asStateFlow()
 
     private var controller: MediaController? = null
     private var controllerFuture: ListenableFuture<MediaController>? = null
@@ -230,6 +232,16 @@ class PlaybackController(
 
     fun clearError() {
         _state.update { it.copy(errorMessage = null) }
+    }
+
+    fun openFullPlayer(bookId: String) {
+        _pendingPlayerRequest.value = bookId
+    }
+
+    fun consumePendingPlayerRequest(): String? {
+        val request = _pendingPlayerRequest.value
+        _pendingPlayerRequest.value = null
+        return request
     }
 
     fun shutdown() {

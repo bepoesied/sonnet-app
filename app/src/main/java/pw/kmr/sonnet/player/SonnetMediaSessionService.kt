@@ -1,5 +1,7 @@
 package pw.kmr.sonnet.player
 
+import android.app.PendingIntent
+import android.content.Intent
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -10,6 +12,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import pw.kmr.sonnet.MainActivity
 
 class SonnetMediaSessionService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
@@ -51,7 +54,16 @@ class SonnetMediaSessionService : MediaSessionService() {
                     .build()
             }
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build())
-        mediaSession = MediaSession.Builder(this, player).build()
+        val sessionIntent = Intent(this, MainActivity::class.java).apply {
+            action = ACTION_OPEN_PLAYER
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val sessionActivity = PendingIntent.getActivity(
+            this, 0, sessionIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        mediaSession = MediaSession.Builder(this, player)
+            .setSessionActivity(sessionActivity)
+            .build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
@@ -66,6 +78,7 @@ class SonnetMediaSessionService : MediaSessionService() {
     }
 
     companion object {
+        const val ACTION_OPEN_PLAYER = "pw.kmr.sonnet.action.OPEN_PLAYER"
         private const val MIN_BUFFER_MS = 120_000
         private const val MAX_BUFFER_MS = 600_000
         private const val BUFFER_FOR_PLAYBACK_MS = 250
