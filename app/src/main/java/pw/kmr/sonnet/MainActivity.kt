@@ -21,6 +21,7 @@ class MainActivity : ComponentActivity() {
         val appContainer = (application as SonnetApplication).appContainer
         appViewModelFactory(appContainer.loginRepository, appContainer.authSessionManager)
     }
+    private var lastHandledIntentHashCode: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,12 +54,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handlePlayerIntent(intent: Intent, appContainer: pw.kmr.sonnet.core.AppContainer) {
-        if (intent.action == SonnetMediaSessionService.ACTION_OPEN_PLAYER) {
+        if (intent.action == SonnetMediaSessionService.ACTION_OPEN_PLAYER && intent.hashCode() != lastHandledIntentHashCode) {
+            lastHandledIntentHashCode = intent.hashCode()
             val bookId = appContainer.playbackController.state.value.bookId
             if (bookId != null) {
                 appContainer.playbackController.openFullPlayer(bookId)
             }
-            intent.action = null
         }
     }
 }

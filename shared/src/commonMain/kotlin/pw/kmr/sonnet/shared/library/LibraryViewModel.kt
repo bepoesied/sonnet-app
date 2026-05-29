@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import pw.kmr.sonnet.shared.model.DownloadStatus
 import pw.kmr.sonnet.shared.model.LibraryBook
 
@@ -21,6 +23,7 @@ class LibraryViewModel(
 ) : ViewModel() {
     private val refreshState = MutableStateFlow(RefreshState())
     private val downloadJobs = mutableMapOf<String, Job>()
+    private val downloadJobsMutex = Mutex()
 
     val uiState: StateFlow<LibraryUiState> = combine(repository.libraryItems, refreshState) { books, refresh ->
         LibraryUiState(
@@ -89,31 +92,34 @@ class LibraryViewModel(
     }
 
     private fun download(book: LibraryBook) {
-        if (downloadJobs.containsKey(book.id)) return
-
-        downloadJobs[book.id] = viewModelScope.launch {
-            try {
-                repository.downloadBook(book.id)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (throwable: Throwable) {
-                refreshState.value = refreshState.value.copy(
-                    lastErrorMessage = throwable.message ?: "Unable to download ${book.title}."
-                )
-            } finally {
-                downloadJobs.remove(book.id)
+        viewModelScope.launch {
+            downloadJobsMutex.withLock {
+                if (downloadJobs.containsKey(book.id)) return@launch
+                downloadJobs[book.id] = launch {
+                    try {
+                        repository.downloadBook(book.id)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (throwable: Throwable) {
+                        refreshState.value = refreshState.value.copy(
+                            lastErrorMessage = throwable.message ?: "Unable to download ${book.title}."
+                        )
+                    } finally {
+                        downloadJobsMutex.withLock { downloadJobs.remove(book.id) }
+                    }
+                }
             }
         }
     }
 
     private fun cancelOrDeleteDownload(book: LibraryBook) {
-        val job = downloadJobs.remove(book.id)
-        if (job != null) {
-            job.cancel()
-            return
-        }
-
         viewModelScope.launch {
+            val job = downloadJobsMutex.withLock { downloadJobs.remove(book.id) }
+            if (job != null) {
+                job.cancel()
+                return@launch
+            }
+
             runCatching { repository.deleteDownload(book.id) }
                 .onFailure { throwable ->
                     refreshState.value = refreshState.value.copy(
@@ -126,18 +132,20 @@ class LibraryViewModel(
     private fun resumeInterruptedDownloads() {
         viewModelScope.launch {
             repository.interruptedDownloadBookIds().forEach { bookId ->
-                if (downloadJobs.containsKey(bookId)) return@forEach
-                downloadJobs[bookId] = launch {
-                    try {
-                        repository.downloadBook(bookId, restartInProgress = true)
-                    } catch (cancellation: CancellationException) {
-                        throw cancellation
-                    } catch (throwable: Throwable) {
-                        refreshState.value = refreshState.value.copy(
-                            lastErrorMessage = throwable.message ?: "Unable to resume a download."
-                        )
-                    } finally {
-                        downloadJobs.remove(bookId)
+                downloadJobsMutex.withLock {
+                    if (downloadJobs.containsKey(bookId)) return@forEach
+                    downloadJobs[bookId] = launch {
+                        try {
+                            repository.downloadBook(bookId, restartInProgress = true)
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (throwable: Throwable) {
+                            refreshState.value = refreshState.value.copy(
+                                lastErrorMessage = throwable.message ?: "Unable to resume a download."
+                            )
+                        } finally {
+                            downloadJobsMutex.withLock { downloadJobs.remove(bookId) }
+                        }
                     }
                 }
             }
