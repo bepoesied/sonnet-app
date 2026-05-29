@@ -17,6 +17,12 @@ class LibraryRepository(
     private val booksDirectory: Path,
     private val fileSystem: FileSystem
 ) : LibraryViewModelRepository, LocalLibraryCleaner {
+
+    init {
+        require(booksDirectory.toString().let { !it.contains("..") && !it.contains("~") }) {
+            "booksDirectory must not contain path traversal sequences"
+        }
+    }
     private val sharedRepository = SharedLibraryRepository(
         booksApiClient = booksApiClient,
         libraryDao = libraryDao
@@ -120,6 +126,7 @@ class LibraryRepository(
             libraryDao.upsertDownload(
                 DownloadEntity(
                     libraryItemId = book.id,
+                    localFilePath = existing?.localFilePath,
                     downloadedBytes = 0L,
                     totalBytes = null,
                     state = "failed",
@@ -150,15 +157,29 @@ class LibraryRepository(
         libraryDao.clearLibraryData()
     }
 
-    private fun bookDirectory(bookId: String): Path = (booksDirectory.toString() + "/" + bookId).toPath()
+    private fun bookDirectory(bookId: String): Path {
+        validateId(bookId)
+        return (booksDirectory.toString() + "/" + bookId).toPath()
+    }
 
     private fun chapterDirectory(bookId: String): Path = (bookDirectory(bookId).toString() + "/chapters").toPath()
 
-    private fun chapterFile(bookId: String, chapterId: String, sourceUrl: String): Path =
-        (chapterDirectory(bookId).toString() + "/$chapterId.${extensionFromUrl(sourceUrl, "audio")}").toPath()
+    private fun chapterFile(bookId: String, chapterId: String, sourceUrl: String): Path {
+        validateId(chapterId)
+        return (chapterDirectory(bookId).toString() + "/$chapterId.${extensionFromUrl(sourceUrl, "audio")}").toPath()
+    }
 
     private fun coverFile(bookId: String, sourceUrl: String): Path =
         (bookDirectory(bookId).toString() + "/cover.${extensionFromUrl(sourceUrl, "img")}").toPath()
+
+    private fun validateId(id: String) {
+        require(id.isNotBlank()) { "ID must not be blank" }
+        require(ID_REGEX.matches(id)) { "ID contains invalid characters: $id" }
+    }
+
+    private companion object {
+        val ID_REGEX = Regex("^[a-zA-Z0-9_-]+$")
+    }
 
     private fun extensionFromUrl(url: String, fallback: String): String {
         val lastSegment = url.substringAfterLast('/').substringBefore('?').substringBefore('#')
