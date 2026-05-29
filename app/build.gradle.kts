@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "pw.kmr.sonnet"
-        minSdk = 36
+        minSdk = 33
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -30,7 +30,7 @@ android {
         }
 
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             manifestPlaceholders["networkSecurityConfig"] = "@xml/network_security_config_release"
             buildConfigField("Boolean", "ENFORCE_HTTPS", "true")
             proguardFiles(

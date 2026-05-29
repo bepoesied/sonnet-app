@@ -19,11 +19,11 @@ kotlin {
     android {
         namespace = "pw.kmr.sonnet.shared"
         compileSdk {
-            version = release(36) {
-                minorApiLevel = 1
+            version = release(37) {
+                minorApiLevel = 0
             }
         }
-        minSdk = 36
+        minSdk = 33
 
         withHostTestBuilder {
         }

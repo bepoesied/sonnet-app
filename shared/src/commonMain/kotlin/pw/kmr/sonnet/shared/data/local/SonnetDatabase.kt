@@ -26,7 +26,7 @@ const val SONNET_DATABASE_NAME = "sonnet.db"
         PlaybackProgressEntity::class
     ],
     version = 5,
-    exportSchema = false
+    exportSchema = true
 )
 @ConstructedBy(SonnetDatabaseConstructor::class)
 abstract class SonnetDatabase : RoomDatabase() {

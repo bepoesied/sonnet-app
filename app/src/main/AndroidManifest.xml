@@ -31,7 +31,9 @@
         <service
             android:name=".player.SonnetMediaSessionService"
             android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
+            android:foregroundServiceType="mediaPlayback"
+            android:permission="android.permission.MEDIA_CONTENT_CONTROL"
+            >
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
