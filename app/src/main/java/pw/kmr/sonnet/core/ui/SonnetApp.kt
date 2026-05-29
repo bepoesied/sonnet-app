@@ -2,6 +2,13 @@ package pw.kmr.sonnet.core.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -138,6 +145,17 @@ private fun AppNavHost(
         AnimatedContent(
             targetState = playerSurface,
             label = "player-surface",
+            transitionSpec = {
+                (fadeIn(animationSpec = tween(300)) + scaleIn(
+                    initialScale = 0.92f,
+                    animationSpec = tween(300)
+                )).togetherWith(
+                    fadeOut(animationSpec = tween(200)) + scaleOut(
+                        targetScale = 1.08f,
+                        animationSpec = tween(200)
+                    )
+                ).using(SizeTransform(clip = false))
+            },
             modifier = Modifier.fillMaxSize()
         ) { surface ->
             when (surface) {

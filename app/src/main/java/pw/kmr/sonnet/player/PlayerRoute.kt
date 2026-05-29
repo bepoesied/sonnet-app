@@ -51,10 +51,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import java.io.File
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlin.math.max
@@ -312,6 +317,7 @@ private fun PlayerContent(
 
 @Composable
 private fun PlayerCover(title: String, coverFilePath: String?, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     Box(
         modifier = modifier
             .size(220.dp)
@@ -319,11 +325,24 @@ private fun PlayerCover(title: String, coverFilePath: String?, modifier: Modifie
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = title.firstOrNull()?.uppercase() ?: "?",
-            style = MaterialTheme.typography.displayMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        if (coverFilePath == null) {
+            Text(
+                text = title.firstOrNull()?.uppercase() ?: "?",
+                style = MaterialTheme.typography.displayMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(File(coverFilePath))
+                    .memoryCacheKey("player-cover-$coverFilePath")
+                    .diskCacheKey("player-cover-$coverFilePath")
+                    .build(),
+                contentDescription = "$title cover",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
 }
 
