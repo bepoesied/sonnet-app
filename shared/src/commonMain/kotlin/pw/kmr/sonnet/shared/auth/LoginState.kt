@@ -20,9 +20,8 @@ data class PendingLogin(
     val authorizationEndpoint: String,
     val tokenEndpoint: String,
     val endSessionEndpoint: String?,
-    val codeChallenge: String,
-    val codeVerifier: String,
-    val nonce: String,
     val responseType: String,
     val mobileConfig: MobileConfig
-)
+) {
+    companion object
+}

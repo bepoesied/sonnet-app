@@ -5,11 +5,12 @@ import io.ktor.client.engine.okhttp.OkHttp
 import okhttp3.OkHttpClient
 import okio.FileSystem
 import pw.kmr.sonnet.BuildConfig
-import pw.kmr.sonnet.auth.AuthRepository
+import pw.kmr.sonnet.auth.AppAuthPlatformProvider
 import pw.kmr.sonnet.data.preferences.SessionRepository
-import pw.kmr.sonnet.data.remote.ServerUrlPolicy
 import pw.kmr.sonnet.player.PlaybackController
 import pw.kmr.sonnet.shared.auth.AuthSessionManager
+import pw.kmr.sonnet.shared.auth.LoginRepository
+import pw.kmr.sonnet.shared.auth.PlatformAuthProvider
 import pw.kmr.sonnet.shared.data.local.SonnetDatabase
 import pw.kmr.sonnet.shared.data.local.buildSonnetDatabase
 import pw.kmr.sonnet.shared.data.local.getSonnetDatabaseBuilder
@@ -34,8 +35,6 @@ class AppContainer(context: Context) {
 
     val database: SonnetDatabase = buildSonnetDatabase(getSonnetDatabaseBuilder(applicationContext))
 
-    val serverUrlPolicy = ServerUrlPolicy(BuildConfig.ENFORCE_HTTPS)
-
     val sonnetApiClient = SonnetApiClient(OkHttp.create {
         preconfigured = okHttpClient
     })
@@ -52,12 +51,14 @@ class AppContainer(context: Context) {
         fileSystem = FileSystem.SYSTEM
     )
 
-    val authRepository = AuthRepository(
+    val platformAuthProvider: PlatformAuthProvider = AppAuthPlatformProvider(applicationContext)
+
+    val loginRepository = LoginRepository(
         authApiClient = authApiClient,
         authSessionManager = authSessionManager,
         settingsRepository = settingsRepository,
-        serverUrlPolicy = serverUrlPolicy,
-        localLibraryCleaner = libraryRepository
+        localLibraryCleaner = libraryRepository,
+        enforcesHttps = BuildConfig.ENFORCE_HTTPS
     )
 
     val progressSyncer = ProgressSyncer(

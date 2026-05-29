@@ -15,33 +15,35 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.collectLatest
-import net.openid.appauth.AuthorizationService
+import pw.kmr.sonnet.shared.auth.LoginRepository
+import pw.kmr.sonnet.shared.auth.PlatformAuthProvider
 
 @Composable
 fun LoginRoute(
-    authRepository: AuthRepository,
+    loginRepository: LoginRepository,
+    platformAuthProvider: PlatformAuthProvider,
     modifier: Modifier = Modifier
 ) {
-    val viewModel: LoginViewModel = viewModel(factory = loginViewModelFactory(authRepository))
+    val viewModel: LoginViewModel = viewModel(
+        factory = loginViewModelFactory(loginRepository, platformAuthProvider)
+    )
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val authorizationService = rememberAuthorizationService()
-    val authLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        viewModel.completeLogin(result.data, authorizationService)
+    val authLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        viewModel.completeLogin(result.data)
     }
 
-    LaunchedEffect(viewModel, authorizationService) {
+    LaunchedEffect(viewModel) {
         viewModel.loginEffects.collectLatest { effect ->
             when (effect) {
                 is LoginEffect.OpenAuth -> authLauncher.launch(effect.intent)
@@ -88,7 +90,7 @@ fun LoginRoute(
                 )
             }
             Button(
-                onClick = { viewModel.startLogin(authorizationService) },
+                onClick = viewModel::startLogin,
                 enabled = !uiState.isLoading && uiState.serverUrl.isNotBlank(),
                 modifier = Modifier.padding(top = 24.dp)
             ) {
@@ -100,14 +102,4 @@ fun LoginRoute(
             }
         }
     }
-}
-
-@Composable
-private fun rememberAuthorizationService(): AuthorizationService {
-    val context = LocalContext.current
-    val authorizationService = remember(context) { AuthorizationService(context) }
-    DisposableEffect(authorizationService) {
-        onDispose { authorizationService.dispose() }
-    }
-    return authorizationService
 }

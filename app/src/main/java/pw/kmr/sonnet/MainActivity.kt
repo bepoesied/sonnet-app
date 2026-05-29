@@ -17,7 +17,7 @@ import pw.kmr.sonnet.ui.theme.SonnetTheme
 class MainActivity : ComponentActivity() {
     private val appViewModel: AppViewModel by viewModels {
         val appContainer = (application as SonnetApplication).appContainer
-        appViewModelFactory(appContainer.authRepository, appContainer.authSessionManager)
+        appViewModelFactory(appContainer.loginRepository, appContainer.authSessionManager)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

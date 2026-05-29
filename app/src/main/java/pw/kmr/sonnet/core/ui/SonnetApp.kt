@@ -121,7 +121,10 @@ private fun AppNavHost(
                 .padding(bottom = if (showMiniPlayer) 104.dp else 0.dp)
         ) {
             composable(AppDestination.Login.route) {
-                LoginRoute(authRepository = appContainer.authRepository)
+                LoginRoute(
+                    loginRepository = appContainer.loginRepository,
+                    platformAuthProvider = appContainer.platformAuthProvider
+                )
             }
             composable(AppDestination.Library.route) {
                 LibraryRoute(
