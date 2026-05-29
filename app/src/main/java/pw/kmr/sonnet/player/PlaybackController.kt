@@ -296,12 +296,12 @@ class PlaybackController(
     private suspend fun reconcileProgressOnOpen(book: DownloadedBook): Long {
         val localProgress = libraryDao.playbackProgress(book.id)
         val remoteProgress = progressSyncer.remoteProgress(book.id)
-        val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis
+        val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis ?: 0L
         val remotePosition = remoteProgress?.chapterId?.let { chapterId ->
             book.positionFor(chapterId, remoteProgress.offsetMillis)
         }
 
-        if (remoteUpdatedAt != null && remotePosition != null) {
+        if (remoteProgress != null && remoteUpdatedAt > 0L && remotePosition != null) {
             val localUpdatedAt = localProgress?.updatedAtEpochMillis ?: 0L
             if (remoteUpdatedAt > localUpdatedAt) {
                 val chapterProgress = book.progressAt(remotePosition)
@@ -347,12 +347,12 @@ class PlaybackController(
         return try {
             val localProgress = libraryDao.playbackProgress(book.id)
             val remoteProgress = progressSyncer.remoteProgress(book.id)
-            val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis
+            val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis ?: 0L
             val remotePosition = remoteProgress?.chapterId?.let { chapterId ->
                 book.positionFor(chapterId, remoteProgress.offsetMillis)
             }
 
-            if (remoteUpdatedAt != null && remotePosition != null) {
+            if (remoteProgress != null && remoteUpdatedAt > 0L && remotePosition != null) {
                 val localUpdatedAt = localProgress?.updatedAtEpochMillis ?: 0L
                 val localPosition = localProgress?.positionMillis ?: 0L
                 if (remoteUpdatedAt > localUpdatedAt && abs(remotePosition - localPosition) >= REMOTE_PROGRESS_DIFF_THRESHOLD_MS) {

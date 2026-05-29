@@ -184,7 +184,8 @@ internal fun RemoteProgressDto.toModel(): RemoteProgress = RemoteProgress(
     offsetMillis = offsetMillis,
     updatedAtEpochMillis = updatedAt
         .normalizedOptional()
-        ?.let { value -> runCatching { Instant.parse(value).toEpochMilliseconds() }.getOrNull() },
+        ?.let { value -> runCatching { Instant.parse(value).toEpochMilliseconds() }.getOrNull() }
+        ?: 0L,
     isCompleted = isCompleted
 )
 

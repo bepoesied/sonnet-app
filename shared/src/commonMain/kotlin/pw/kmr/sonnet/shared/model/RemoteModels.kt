@@ -33,7 +33,7 @@ data class BookChapter(
 data class RemoteProgress(
     val chapterId: String?,
     val offsetMillis: Long,
-    val updatedAtEpochMillis: Long?,
+    val updatedAtEpochMillis: Long = 0L,
     val isCompleted: Boolean
 )
 
