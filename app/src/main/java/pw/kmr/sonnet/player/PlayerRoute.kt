@@ -138,8 +138,10 @@ private fun ResumeProgressDialog(
         title = { Text(text = "Resume from server?") },
         text = {
             Text(
-                text = "This book has newer server progress at ${prompt.remotePositionMs.formatDuration()}. " +
-                    "Your local position is ${prompt.localPositionMs.formatDuration()}."
+                text = "Server has newer progress in \"${prompt.remoteChapterTitle}\" " +
+                    "at ${prompt.remoteChapterOffsetMs.formatDuration()}.\n" +
+                    "Your local position is in \"${prompt.localChapterTitle}\" " +
+                    "at ${prompt.localChapterOffsetMs.formatDuration()}."
             )
         },
         confirmButton = { TextButton(onClick = onUseRemote) { Text(text = "Use server") } },
