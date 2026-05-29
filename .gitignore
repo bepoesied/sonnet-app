@@ -13,3 +13,54 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Built files and directories
+**/build/
+build/
+*.apk
+*.aar
+*.ap_
+*.der
+
+# Android Studio / IntelliJ files
+.gradle/
+local.properties
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/kotlinc.xml
+.idea/migrations.xml
+.idea/runConfigurations/
+.idea/uxconfigs.xml
+*.iml
+*.ipr
+*.iws
+
+# Keystores and sensitive signing files
+# (Never commit your production keystore)
+*.jks
+*.keystore
+*.pk8
+*.p12
+*.pem
+
+# Crashlytics / Google Services config (if you want to keep API keys private)
+# google-services.json
+
+# Local configuration and cache
+.externalNativeBuild/
+.cxx/
+captures/
+.navigation/
+
+# Log files
+*.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+.kotlin/
