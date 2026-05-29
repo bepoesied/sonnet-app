@@ -6,6 +6,7 @@ import pw.kmr.sonnet.shared.data.preferences.AppSettingsRepository
 import pw.kmr.sonnet.shared.library.LocalLibraryCleaner
 import pw.kmr.sonnet.shared.model.AuthSession
 import pw.kmr.sonnet.shared.remote.AuthApiClient
+import java.net.InetAddress
 
 class LoginRepository(
     private val authApiClient: AuthApiClient,
@@ -76,10 +77,40 @@ class LoginRepository(
         return try {
             val url = Url(serverUrl)
             val scheme = url.protocol.name
-            url.host.isNotEmpty() && scheme in setOf("http", "https") && (!enforcesHttps || scheme == "https")
+            val host = url.host
+            host.isNotEmpty() &&
+                scheme in setOf("http", "https") &&
+                (!enforcesHttps || scheme == "https") &&
+                !isPrivateOrLoopbackHost(host)
         } catch (_: Exception) {
             false
         }
+    }
+
+    private fun isPrivateOrLoopbackHost(host: String): Boolean {
+        if (host.equals("localhost", ignoreCase = true)) return true
+        if (host.endsWith(".localhost", ignoreCase = true)) return true
+        return try {
+            val address = InetAddress.getByName(host)
+            address.isLoopbackAddress || address.isSiteLocalAddress || address.isLinkLocalAddress ||
+                address.isAnyLocalAddress || isReservedRange(address)
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    private fun isReservedRange(address: InetAddress): Boolean {
+        val bytes = address.address
+        if (bytes.size != 4) return false
+        val first = bytes[0].toInt() and 0xFF
+        val second = bytes[1].toInt() and 0xFF
+        return first == 100 && (second and 0xC0) == 64 ||
+            first == 172 && (second and 0xF0) == 16 ||
+            first == 192 && second == 168 ||
+            first == 169 && second == 254 ||
+            first == 127 ||
+            first == 0 ||
+            first >= 224
     }
 
     private companion object {
