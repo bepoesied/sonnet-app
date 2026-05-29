@@ -191,6 +191,7 @@ class PlaybackController(
         c.seekBack()
         val to = currentBookPositionMs(c)
         consumeSleepTimerForSeek(from, to)
+        saveProgressSoon(forceSync = !c.isPlaying)
         publishState()
     }
 
@@ -200,6 +201,7 @@ class PlaybackController(
         c.seekForward()
         val to = currentBookPositionMs(c)
         consumeSleepTimerForSeek(from, to)
+        saveProgressSoon(forceSync = !c.isPlaying)
         publishState()
     }
 
@@ -210,6 +212,7 @@ class PlaybackController(
         val target = book.seekTargetFor(positionMs)
         c.seekTo(target.chapterIndex, target.chapterPositionMs)
         consumeSleepTimerForSeek(from, positionMs)
+        saveProgressSoon(forceSync = !c.isPlaying)
         publishState()
     }
 
@@ -232,7 +235,7 @@ class PlaybackController(
     fun shutdown() {
         val c = controller ?: return
         c.pause()
-        saveProgressSoon(forceSync = false)
+        saveProgressSoon(forceSync = true)
         loadedBook = null
         c.removeListener(playerListener)
         c.release()
