@@ -8,7 +8,7 @@ import kotlinx.serialization.json.Json
 
 class SonnetApiClient(engine: HttpClientEngine) {
     internal val httpClient: HttpClient = HttpClient(engine) {
-        expectSuccess = false
+        expectSuccess = true
         install(ContentNegotiation) {
             json(
                 Json {
@@ -17,5 +17,9 @@ class SonnetApiClient(engine: HttpClientEngine) {
                 }
             )
         }
+    }
+
+    fun close() {
+        httpClient.close()
     }
 }
