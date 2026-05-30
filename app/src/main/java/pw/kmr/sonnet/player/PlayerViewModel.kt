@@ -6,45 +6,48 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import pw.kmr.sonnet.shared.playback.PlaybackOrchestrator
+import pw.kmr.sonnet.shared.playback.PlayerUiState
+import pw.kmr.sonnet.shared.playback.SleepTimerState
 
 class PlayerViewModel(
-    private val playbackController: PlaybackController,
+    private val orchestrator: PlaybackOrchestrator,
     private val bookId: String
 ) : ViewModel() {
-    val uiState: StateFlow<PlayerUiState> = playbackController.state
+    val uiState: StateFlow<PlayerUiState> = orchestrator.state
 
     private var loadJob: Job? = null
 
     fun load() {
         if (loadJob?.isActive == true) return
-        loadJob = viewModelScope.launch { playbackController.load(bookId) }
+        loadJob = viewModelScope.launch { orchestrator.load(bookId) }
     }
 
-    fun playPause() = playbackController.playPause()
+    fun playPause() = orchestrator.playPause()
 
-    fun seekBack() = playbackController.seekBack()
+    fun seekBack() = orchestrator.seekBack()
 
-    fun seekForward() = playbackController.seekForward()
+    fun seekForward() = orchestrator.seekForward()
 
-    fun seekTo(positionMs: Long) = playbackController.seekToBookPosition(positionMs)
+    fun seekTo(positionMs: Long) = orchestrator.seekToBookPosition(positionMs)
 
-    fun jumpToChapter(chapterId: String) = playbackController.jumpToChapter(chapterId)
+    fun jumpToChapter(chapterId: String) = orchestrator.jumpToChapter(chapterId)
 
-    fun setSleepTimer(timer: SleepTimerState) = playbackController.setSleepTimer(timer)
+    fun setSleepTimer(timer: SleepTimerState) = orchestrator.setSleepTimer(timer)
 
-    fun useRemoteProgress() = playbackController.useRemoteProgress()
+    fun useRemoteProgress() = orchestrator.useRemoteProgress()
 
-    fun keepLocalProgress() = playbackController.keepLocalProgress()
+    fun keepLocalProgress() = orchestrator.keepLocalProgress()
 
-    fun clearError() = playbackController.clearError()
+    fun clearError() = orchestrator.clearError()
 
     class Factory(
-        private val playbackController: PlaybackController,
+        private val orchestrator: PlaybackOrchestrator,
         private val bookId: String
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return PlayerViewModel(playbackController, bookId) as T
+            return PlayerViewModel(orchestrator, bookId) as T
         }
     }
 }

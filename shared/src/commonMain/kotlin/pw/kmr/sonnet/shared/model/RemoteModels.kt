@@ -1,5 +1,7 @@
 package pw.kmr.sonnet.shared.model
 
+import kotlinx.serialization.Serializable
+
 data class BookSummary(
     val id: String,
     val title: String,
@@ -37,15 +39,16 @@ data class RemoteProgress(
     val isCompleted: Boolean
 )
 
+@Serializable
 data class MobileConfig(
     val issuer: String,
     val clientId: String,
     val authorizationEndpoint: String,
     val tokenEndpoint: String,
-    val endSessionEndpoint: String?,
-    val scopes: List<String>,
+    val endSessionEndpoint: String? = null,
+    val scopes: List<String> = emptyList(),
     val responseType: String,
-    val codeChallengeMethodsSupported: List<String>
+    val codeChallengeMethodsSupported: List<String> = emptyList()
 )
 
 data class LoginResponse(

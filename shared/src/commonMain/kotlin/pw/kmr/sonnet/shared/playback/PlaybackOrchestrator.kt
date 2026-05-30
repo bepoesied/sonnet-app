@@ -1,63 +1,37 @@
-package pw.kmr.sonnet.player
+package pw.kmr.sonnet.shared.playback
 
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import androidx.core.content.ContextCompat
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.Player
-import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
-import com.google.common.util.concurrent.FutureCallback
-import com.google.common.util.concurrent.Futures
-import com.google.common.util.concurrent.ListenableFuture
-import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 import kotlin.math.max
 import pw.kmr.sonnet.shared.data.local.dao.LibraryDao
 import pw.kmr.sonnet.shared.data.local.entity.PlaybackProgressEntity
+import pw.kmr.sonnet.shared.ioDispatcher
 import pw.kmr.sonnet.shared.library.LibraryRepository
 import pw.kmr.sonnet.shared.model.DownloadedBook
-import pw.kmr.sonnet.shared.playback.bookPositionFor
-import pw.kmr.sonnet.shared.playback.chapterOffsetAt
-import pw.kmr.sonnet.shared.playback.chapterStartPositionMs
-import pw.kmr.sonnet.shared.playback.chapterTitleAt
-import pw.kmr.sonnet.shared.playback.positionFor
-import pw.kmr.sonnet.shared.playback.progressAt
-import pw.kmr.sonnet.shared.playback.projectChapters
-import pw.kmr.sonnet.shared.playback.seekTargetFor
-import pw.kmr.sonnet.shared.playback.totalDurationMs
 import pw.kmr.sonnet.shared.sync.ProgressSyncer
+
+internal expect fun currentTimeMillis(): Long
 
 private const val SAVE_DEBOUNCE_MS = 300L
 private const val PROGRESS_TICK_MS = 1_000L
 private const val PERIODIC_SAVE_MS = 5_000L
 private const val PERIODIC_SYNC_MS = 60_000L
 const val SEEK_INCREMENT_MS = 10_000L
-private const val REMOTE_PROGRESS_DIFF_THRESHOLD_MS = 10_000L
 
-class PlaybackController(
-    context: Context,
+class PlaybackOrchestrator(
+    private val engine: PlaybackEngine,
     private val libraryRepository: LibraryRepository,
     private val libraryDao: LibraryDao,
     private val progressSyncer: ProgressSyncer
 ) {
-    private val applicationContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(PlayerUiState())
     private val _pendingPlayerRequest = MutableStateFlow<String?>(null)
@@ -65,81 +39,50 @@ class PlaybackController(
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
     val pendingPlayerRequest: StateFlow<String?> = _pendingPlayerRequest.asStateFlow()
 
-    private var controller: MediaController? = null
-    private var controllerFuture: ListenableFuture<MediaController>? = null
-
-    @Volatile private var loadedBook: DownloadedBook? = null
-    private val saveMutex = Mutex()
-    @Volatile private var forceSyncAfterSave = false
-    @Volatile private var resumeCheckInFlight = false
-    private var syncJob: Job? = null
+    private var loadedBook: DownloadedBook? = null
+    private var saveInFlight = false
+    private var forceSyncAfterSave = false
+    private var resumeCheckInFlight = false
     private var lastPeriodicProgressSaveMs = 0L
     private var lastPeriodicProgressSyncMs = 0L
     private var chapterEndSleepEnabled = false
     private var lastSleepPositionMs: Long? = null
-    private var pendingPlayAfterConnect = false
 
-    private val playerListener = object : Player.Listener {
-        override fun onEvents(player: Player, events: Player.Events) {
+    private val engineListener = object : PlaybackEngineListener {
+        override fun onPlaybackStateChanged(isPlaying: Boolean, playbackState: Int) {
             publishState()
-            if (
-                events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) ||
-                events.contains(Player.EVENT_POSITION_DISCONTINUITY) ||
-                events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)
-            ) {
-                saveProgressSoon(forceSync = !player.isPlaying)
-            }
+            saveProgressSoon(forceSync = !isPlaying)
         }
 
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            if (chapterEndSleepEnabled && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+        override fun onPositionDiscontinuity() {
+            publishState()
+            saveProgressSoon(forceSync = !engine.isPlaying())
+        }
+
+        override fun onMediaItemTransition(index: Int, reason: Int) {
+            if (chapterEndSleepEnabled && reason == MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                 chapterEndSleepEnabled = false
-                controller?.pause()
+                engine.pause()
                 _state.update { it.copy(sleepTimer = SleepTimerState.Off) }
             }
         }
 
-        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-            _state.update { it.copy(errorMessage = error.message ?: "Playback failed.") }
+        override fun onPlayerError(message: String) {
+            _state.update { it.copy(errorMessage = message) }
         }
     }
 
     init {
-        connectToService()
-    }
-
-    private fun connectToService() {
-        val token = SessionToken(
-            applicationContext,
-            ComponentName(applicationContext, SonnetMediaSessionService::class.java)
-        )
-        val future = MediaController.Builder(applicationContext, token).buildAsync()
-        controllerFuture = future
-        Futures.addCallback(
-            future,
-            object : FutureCallback<MediaController> {
-                override fun onSuccess(result: MediaController) {
-                    controller = result
-                    result.addListener(playerListener)
-                    scope.launch { progressTicker() }
-                    scope.launch { sleepTimerTicker() }
-                    if (pendingPlayAfterConnect) {
-                        pendingPlayAfterConnect = false
-                        result.play()
-                    }
-                }
-
-                override fun onFailure(t: Throwable) {
-                    _state.update { it.copy(errorMessage = "Failed to connect to playback service.") }
-                }
-            },
-            MoreExecutors.directExecutor()
-        )
+        engine.addListener(engineListener)
+        scope.launch {
+            engine.connect()
+            progressTicker()
+        }
+        scope.launch { sleepTimerTicker() }
     }
 
     suspend fun load(bookId: String) {
-        val c = controller ?: return
-        if (loadedBook?.id == bookId && c.mediaItemCount > 0) {
+        if (loadedBook?.id == bookId && engine.mediaItemCount() > 0) {
             publishState()
             return
         }
@@ -147,35 +90,29 @@ class PlaybackController(
         val book = libraryRepository.downloadedBook(bookId) ?: return
         val startPosition = reconcileProgressOnOpen(book)
         val target = book.seekTargetFor(startPosition)
-        val artworkUri = book.coverFilePath?.let { Uri.fromFile(java.io.File(it)) }
 
         loadedBook = book
-        c.setMediaItems(
-            book.chapters.map { chapter ->
-                MediaItem.Builder()
-                    .setUri(chapter.audioFilePath)
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle(chapter.title)
-                            .setAlbumTitle(book.title)
-                            .setArtist(book.author)
-                            .setArtworkUri(artworkUri)
-                            .build()
-                    )
-                    .build()
+        engine.loadMedia(
+            items = book.chapters.map { chapter ->
+                MediaItemDescriptor(
+                    uri = chapter.audioFilePath,
+                    title = chapter.title,
+                    albumTitle = book.title,
+                    artist = book.author,
+                    artworkUri = book.coverFilePath
+                )
             },
-            target.chapterIndex,
-            target.chapterPositionMs
+            startIndex = target.chapterIndex,
+            startPositionMs = target.chapterPositionMs
         )
-        c.prepare()
+        engine.prepare()
         publishState()
     }
 
     fun playPause() {
         val book = loadedBook ?: return
-        val c = controller
-        if (c != null && c.isPlaying) {
-            c.pause()
+        if (engine.isPlaying()) {
+            engine.pause()
             saveProgressSoon(forceSync = true)
             return
         }
@@ -184,43 +121,36 @@ class PlaybackController(
 
         scope.launch {
             if (reconcileProgressBeforePlay(book)) {
-                ContextCompat.startForegroundService(
-                    applicationContext,
-                    Intent(applicationContext, SonnetMediaSessionService::class.java)
-                )
-                controller?.play() ?: run { pendingPlayAfterConnect = true }
+                engine.play()
             }
         }
     }
 
     fun seekBack() {
-        val c = controller ?: return
-        val from = currentBookPositionMs(c)
-        c.seekBack()
-        val to = currentBookPositionMs(c)
+        val from = currentBookPositionMs()
+        engine.seekBack()
+        val to = currentBookPositionMs()
         consumeSleepTimerForSeek(from, to)
-        saveProgressSoon(forceSync = !c.isPlaying)
+        saveProgressSoon(forceSync = !engine.isPlaying())
         publishState()
     }
 
     fun seekForward() {
-        val c = controller ?: return
-        val from = currentBookPositionMs(c)
-        c.seekForward()
-        val to = currentBookPositionMs(c)
+        val from = currentBookPositionMs()
+        engine.seekForward()
+        val to = currentBookPositionMs()
         consumeSleepTimerForSeek(from, to)
-        saveProgressSoon(forceSync = !c.isPlaying)
+        saveProgressSoon(forceSync = !engine.isPlaying())
         publishState()
     }
 
     fun seekToBookPosition(positionMs: Long) {
         val book = loadedBook ?: return
-        val c = controller ?: return
-        val from = currentBookPositionMs(c)
+        val from = currentBookPositionMs()
         val target = book.seekTargetFor(positionMs)
-        c.seekTo(target.chapterIndex, target.chapterPositionMs)
+        engine.seekToChapter(target.chapterIndex, target.chapterPositionMs)
         consumeSleepTimerForSeek(from, positionMs)
-        saveProgressSoon(forceSync = !c.isPlaying)
+        saveProgressSoon(forceSync = !engine.isPlaying())
         publishState()
     }
 
@@ -251,28 +181,22 @@ class PlaybackController(
     }
 
     fun shutdown() {
-        val c = controller ?: return
-        c.pause()
+        engine.pause()
         saveProgressSoon(forceSync = true)
         loadedBook = null
-        c.removeListener(playerListener)
-        c.release()
-        controller = null
-        controllerFuture?.cancel(true)
-        controllerFuture = null
-        scope.cancel()
+        engine.removeListener(engineListener)
+        engine.release()
         _state.value = PlayerUiState()
     }
 
     fun useRemoteProgress() {
         val book = loadedBook ?: return
-        val c = controller ?: return
         val prompt = state.value.resumePrompt ?: return
         val target = book.seekTargetFor(prompt.remotePositionMs)
-        c.seekTo(target.chapterIndex, target.chapterPositionMs)
+        engine.seekToChapter(target.chapterIndex, target.chapterPositionMs)
         val chapterProgress = book.progressAt(prompt.remotePositionMs)
         _state.update { it.copy(resumePrompt = null) }
-        scope.launch(Dispatchers.IO) {
+        scope.launch(ioDispatcher) {
             libraryDao.upsertPlaybackProgress(
                 PlaybackProgressEntity(
                     libraryItemId = book.id,
@@ -297,12 +221,12 @@ class PlaybackController(
     private suspend fun reconcileProgressOnOpen(book: DownloadedBook): Long {
         val localProgress = libraryDao.playbackProgress(book.id)
         val remoteProgress = progressSyncer.remoteProgress(book.id)
-        val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis ?: 0L
+        val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis
         val remotePosition = remoteProgress?.chapterId?.let { chapterId ->
             book.positionFor(chapterId, remoteProgress.offsetMillis)
         }
 
-        if (remoteProgress != null && remoteUpdatedAt > 0L && remotePosition != null) {
+        if (remoteUpdatedAt != null && remotePosition != null) {
             val localUpdatedAt = localProgress?.updatedAtEpochMillis ?: 0L
             if (remoteUpdatedAt > localUpdatedAt) {
                 val chapterProgress = book.progressAt(remotePosition)
@@ -331,13 +255,13 @@ class PlaybackController(
                         pendingSync = true
                     )
                 )
-                scope.launch(Dispatchers.IO) { progressSyncer.syncBook(book.id) }
+                scope.launch(ioDispatcher) { progressSyncer.syncBook(book.id) }
                 return localProgress.positionMillis
             }
         }
 
         if (localProgress?.pendingSync == true) {
-            scope.launch(Dispatchers.IO) { progressSyncer.syncBook(book.id) }
+            scope.launch(ioDispatcher) { progressSyncer.syncBook(book.id) }
         }
         return localProgress?.positionMillis ?: 0L
     }
@@ -348,15 +272,15 @@ class PlaybackController(
         return try {
             val localProgress = libraryDao.playbackProgress(book.id)
             val remoteProgress = progressSyncer.remoteProgress(book.id)
-            val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis ?: 0L
+            val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis
             val remotePosition = remoteProgress?.chapterId?.let { chapterId ->
                 book.positionFor(chapterId, remoteProgress.offsetMillis)
             }
 
-            if (remoteProgress != null && remoteUpdatedAt > 0L && remotePosition != null) {
+            if (remoteUpdatedAt != null && remotePosition != null) {
                 val localUpdatedAt = localProgress?.updatedAtEpochMillis ?: 0L
                 val localPosition = localProgress?.positionMillis ?: 0L
-                if (remoteUpdatedAt > localUpdatedAt && abs(remotePosition - localPosition) >= REMOTE_PROGRESS_DIFF_THRESHOLD_MS) {
+                if (remoteUpdatedAt > localUpdatedAt && abs(remotePosition - localPosition) >= 10_000L) {
                     showRemoteProgressPrompt(book, localPosition, remotePosition, remoteUpdatedAt)
                     false
                 } else {
@@ -393,58 +317,51 @@ class PlaybackController(
     }
 
     private fun saveProgressSoon(forceSync: Boolean = false) {
-        if (saveMutex.isLocked) {
+        if (saveInFlight) {
             if (forceSync) forceSyncAfterSave = true
             return
         }
 
         val book = loadedBook ?: return
-        val positionMs = currentBookPositionMs(controller ?: return)
+        val positionMs = currentBookPositionMs()
         val durationMs = book.totalDurationMs()
         val chapterProgress = book.progressAt(positionMs)
 
-        scope.launch(Dispatchers.IO) {
-            saveMutex.withLock {
-                delay(SAVE_DEBOUNCE_MS)
-                libraryDao.upsertPlaybackProgress(
-                    PlaybackProgressEntity(
-                        libraryItemId = book.id,
-                        chapterId = chapterProgress.chapterId,
-                        chapterOffsetMillis = chapterProgress.chapterOffsetMs,
-                        positionMillis = positionMs,
-                        durationMillis = durationMs,
-                        updatedAtEpochMillis = System.currentTimeMillis(),
-                        isCompleted = false,
-                        pendingSync = true
-                    )
+        saveInFlight = true
+        scope.launch(ioDispatcher) {
+            delay(SAVE_DEBOUNCE_MS)
+            libraryDao.upsertPlaybackProgress(
+                PlaybackProgressEntity(
+                    libraryItemId = book.id,
+                    chapterId = chapterProgress.chapterId,
+                    chapterOffsetMillis = chapterProgress.chapterOffsetMs,
+                    positionMillis = positionMs,
+                    durationMillis = durationMs,
+                    updatedAtEpochMillis = currentTimeMillis(),
+                    isCompleted = false,
+                    pendingSync = true
                 )
-                val shouldSync = forceSync || forceSyncAfterSave
-                forceSyncAfterSave = false
-                if (shouldSync) {
-                    progressSyncer.syncBook(book.id)
-                }
+            )
+            saveInFlight = false
+            val shouldSync = forceSync || forceSyncAfterSave
+            forceSyncAfterSave = false
+            if (shouldSync) {
+                progressSyncer.syncBook(book.id)
             }
         }
     }
 
     private suspend fun progressTicker() {
         while (true) {
-            val c = controller
-            if (c == null) {
-                delay(PROGRESS_TICK_MS)
-                continue
-            }
             publishState()
-            val now = System.currentTimeMillis()
-            if (c.isPlaying && now - lastPeriodicProgressSaveMs >= PERIODIC_SAVE_MS) {
+            val now = currentTimeMillis()
+            if (engine.isPlaying() && now - lastPeriodicProgressSaveMs >= PERIODIC_SAVE_MS) {
                 lastPeriodicProgressSaveMs = now
                 saveProgressSoon(forceSync = false)
             }
-            if (c.isPlaying && now - lastPeriodicProgressSyncMs >= PERIODIC_SYNC_MS) {
+            if (engine.isPlaying() && now - lastPeriodicProgressSyncMs >= PERIODIC_SYNC_MS) {
                 lastPeriodicProgressSyncMs = now
-                if (syncJob?.isActive != true) {
-                    syncJob = scope.launch(Dispatchers.IO) { progressSyncer.syncPending() }
-                }
+                scope.launch(ioDispatcher) { progressSyncer.syncPending() }
             }
             delay(PROGRESS_TICK_MS)
         }
@@ -452,15 +369,14 @@ class PlaybackController(
 
     private suspend fun sleepTimerTicker() {
         while (true) {
-            val c = controller
             val timer = state.value.sleepTimer
-            if (timer is SleepTimerState.Countdown && c != null && c.isPlaying) {
-                val position = currentBookPositionMs(c)
+            if (timer is SleepTimerState.Countdown && engine.isPlaying()) {
+                val position = currentBookPositionMs()
                 val last = lastSleepPositionMs
                 if (last != null && position > last) {
                     val remaining = timer.remainingMs - (position - last)
                     if (remaining <= 0L) {
-                        c.pause()
+                        engine.pause()
                         setSleepTimer(SleepTimerState.Off)
                     } else {
                         _state.update { it.copy(sleepTimer = timer.copy(remainingMs = remaining)) }
@@ -481,7 +397,7 @@ class PlaybackController(
             is SleepTimerState.Countdown -> {
                 val remaining = timer.remainingMs - (toPositionMs - fromPositionMs)
                 if (remaining <= 0L) {
-                    controller?.pause()
+                    engine.pause()
                     setSleepTimer(SleepTimerState.Off)
                 } else {
                     _state.update { it.copy(sleepTimer = timer.copy(remainingMs = remaining)) }
@@ -489,8 +405,7 @@ class PlaybackController(
             }
             SleepTimerState.ChapterEnd -> {
                 val book = loadedBook ?: return
-                val c = controller ?: return
-                val currentChapterEnd = book.chapterStartPositionMs(c.currentMediaItemIndex + 1)
+                val currentChapterEnd = book.chapterStartPositionMs(engine.currentMediaItemIndex() + 1)
                 if (toPositionMs >= currentChapterEnd) {
                     setSleepTimer(SleepTimerState.Off)
                 }
@@ -500,12 +415,11 @@ class PlaybackController(
 
     private fun publishState() {
         val book = loadedBook
-        val c = controller
-        val currentChapterIndex = c?.currentMediaItemIndex?.coerceAtLeast(0) ?: 0
+        val currentChapterIndex = engine.currentMediaItemIndex().coerceAtLeast(0)
         val currentChapter = book?.chapters?.getOrNull(currentChapterIndex)
-        val playerPosition = max(c?.currentPosition ?: 0L, 0L)
+        val playerPosition = max(engine.currentPositionMs(), 0L)
         val position = book?.bookPositionFor(currentChapterIndex, playerPosition) ?: playerPosition
-        val duration = book?.totalDurationMs() ?: c?.duration?.takeIf { it > 0L } ?: 0L
+        val duration = book?.totalDurationMs() ?: 0L
         val currentChapterStart = book?.chapterStartPositionMs(currentChapterIndex) ?: 0L
         val currentChapterDuration = currentChapter?.durationMs ?: 0L
 
@@ -521,75 +435,23 @@ class PlaybackController(
                 currentChapterStartPositionMs = currentChapterStart,
                 currentChapterPositionMs = playerPosition,
                 currentChapterDurationMs = currentChapterDuration,
-                isPlaying = c?.isPlaying == true,
+                isPlaying = engine.isPlaying(),
                 positionMs = position,
                 durationMs = duration,
-                canPlay = book != null && (c?.mediaItemCount ?: 0) > 0
+                canPlay = book != null && engine.mediaItemCount() > 0
             )
         }
     }
 
-    private fun currentBookPositionMs(c: MediaController): Long {
-        val book = loadedBook ?: return max(c.currentPosition, 0L)
+    private fun currentBookPositionMs(): Long {
+        val book = loadedBook ?: return max(engine.currentPositionMs(), 0L)
         return book.bookPositionFor(
-            chapterIndex = c.currentMediaItemIndex,
-            chapterPositionMs = max(c.currentPosition, 0L)
+            chapterIndex = engine.currentMediaItemIndex(),
+            chapterPositionMs = max(engine.currentPositionMs(), 0L)
         )
     }
-}
 
-data class PlayerUiState(
-    val bookId: String? = null,
-    val title: String = "",
-    val author: String? = null,
-    val coverFilePath: String? = null,
-    val chapters: List<PlayerChapter> = emptyList(),
-    val currentChapterId: String? = null,
-    val currentChapterTitle: String = "",
-    val currentChapterStartPositionMs: Long = 0L,
-    val currentChapterPositionMs: Long = 0L,
-    val currentChapterDurationMs: Long = 0L,
-    val isPlaying: Boolean = false,
-    val positionMs: Long = 0L,
-    val durationMs: Long = 0L,
-    val canPlay: Boolean = false,
-    val isCheckingRemoteState: Boolean = false,
-    val sleepTimer: SleepTimerState = SleepTimerState.Off,
-    val resumePrompt: ProgressResumePrompt? = null,
-    val errorMessage: String? = null
-)
-
-data class PlayerChapter(
-    val id: String,
-    val title: String,
-    val position: Int,
-    val startPositionMs: Long,
-    val durationMs: Long?
-)
-
-sealed interface SleepTimerState {
-    data object Off : SleepTimerState
-    data class Countdown(val remainingMs: Long) : SleepTimerState
-    data object ChapterEnd : SleepTimerState
-}
-
-data class ProgressResumePrompt(
-    val localPositionMs: Long,
-    val localChapterTitle: String = "",
-    val localChapterOffsetMs: Long = 0L,
-    val remotePositionMs: Long,
-    val remoteChapterTitle: String = "",
-    val remoteChapterOffsetMs: Long = 0L,
-    val remoteUpdatedAtEpochMillis: Long
-)
-
-private fun DownloadedBook.toUiChapters(): List<PlayerChapter> =
-    projectChapters().map { chapter ->
-        PlayerChapter(
-            id = chapter.id,
-            title = chapter.title,
-            position = chapter.position,
-            startPositionMs = chapter.startPositionMs,
-            durationMs = chapter.durationMs
-        )
+    companion object {
+        const val MEDIA_ITEM_TRANSITION_REASON_AUTO = 0
     }
+}

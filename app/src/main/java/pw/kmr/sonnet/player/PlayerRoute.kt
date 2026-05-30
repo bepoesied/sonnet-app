@@ -63,13 +63,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlin.math.max
 import kotlin.math.roundToLong
+import pw.kmr.sonnet.shared.playback.PlaybackOrchestrator
+import pw.kmr.sonnet.shared.playback.PlayerChapter
+import pw.kmr.sonnet.shared.playback.PlayerUiState
+import pw.kmr.sonnet.shared.playback.ProgressResumePrompt
+import pw.kmr.sonnet.shared.playback.SleepTimerState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerRoute(
     bookId: String,
     isDownloaded: Boolean,
-    playbackController: PlaybackController,
+    playbackOrchestrator: PlaybackOrchestrator,
     onBack: () -> Unit,
     coverModifier: Modifier = Modifier,
     playButtonModifier: Modifier = Modifier,
@@ -79,7 +84,7 @@ fun PlayerRoute(
 ) {
     val viewModel: PlayerViewModel = viewModel(
         key = "player-$bookId",
-        factory = PlayerViewModel.Factory(playbackController, bookId)
+        factory = PlayerViewModel.Factory(playbackOrchestrator, bookId)
     )
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -190,9 +195,10 @@ private fun PlayerContent(
         scrubPosition = uiState.currentChapterPositionMs
     }
 
-    if (uiState.resumePrompt != null) {
+    val resumePrompt = uiState.resumePrompt
+    if (resumePrompt != null) {
         ResumeProgressDialog(
-            prompt = uiState.resumePrompt,
+            prompt = resumePrompt,
             onUseRemote = onUseRemoteProgress,
             onKeepLocal = onKeepLocalProgress
         )

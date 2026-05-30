@@ -1,4 +1,4 @@
-package pw.kmr.sonnet.auth
+package pw.kmr.sonnet.shared.auth
 
 import android.content.Context
 import android.content.Intent
@@ -11,15 +11,13 @@ import net.openid.appauth.AuthorizationService
 import net.openid.appauth.AuthorizationServiceConfiguration
 import net.openid.appauth.CodeVerifierUtil
 import net.openid.appauth.ResponseTypeValues
-import pw.kmr.sonnet.shared.auth.PendingLogin
-import pw.kmr.sonnet.shared.auth.PlatformAuthProvider
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 class AppAuthPlatformProvider(context: Context) : PlatformAuthProvider {
     private val authService = AuthorizationService(context.applicationContext)
 
-    override suspend fun startAuthorization(pendingLogin: PendingLogin): Intent {
+    override suspend fun startAuthorization(pendingLogin: PendingLogin): Any {
         val config = AuthorizationServiceConfiguration(
             Uri.parse(pendingLogin.authorizationEndpoint),
             Uri.parse(pendingLogin.tokenEndpoint),

@@ -50,7 +50,7 @@ private fun AppNavHost(
 ) {
     val startKey = if (isAuthenticated) LibraryKey else LoginKey
     val backStack = rememberNavBackStack(startKey)
-    val playerState by appContainer.playbackController.state.collectAsStateWithLifecycle()
+    val playerState by appContainer.playbackOrchestrator.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(isAuthenticated) {
         val targetKey = if (isAuthenticated) LibraryKey else LoginKey
@@ -59,14 +59,14 @@ private fun AppNavHost(
             backStack.add(targetKey)
         }
         if (!isAuthenticated) {
-            appContainer.playbackController.shutdown()
+            appContainer.playbackOrchestrator.shutdown()
         }
     }
 
     LaunchedEffect(Unit) {
-        appContainer.playbackController.pendingPlayerRequest.collect { bookId ->
+        appContainer.playbackOrchestrator.pendingPlayerRequest.collect { bookId ->
             if (bookId != null) {
-                appContainer.playbackController.consumePendingPlayerRequest()
+                appContainer.playbackOrchestrator.consumePendingPlayerRequest()
                 if (backStack.lastOrNull() !is FullPlayerKey) {
                     backStack.add(FullPlayerKey(bookId, true))
                 }
@@ -98,7 +98,7 @@ private fun AppNavHost(
             pw.kmr.sonnet.player.PlayerRoute(
                 bookId = key.bookId,
                 isDownloaded = key.isDownloaded,
-                playbackController = appContainer.playbackController,
+                playbackOrchestrator = appContainer.playbackOrchestrator,
                 onBack = { backStack.removeLastOrNull() }
             )
         }
@@ -125,7 +125,7 @@ private fun AppNavHost(
                         backStack.add(FullPlayerKey(bookId, true))
                     }
                 },
-                onPlayPause = appContainer.playbackController::playPause
+                onPlayPause = appContainer.playbackOrchestrator::playPause
             )
         ),
         transitionSpec = {

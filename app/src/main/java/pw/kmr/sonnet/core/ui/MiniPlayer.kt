@@ -36,7 +36,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import java.io.File
 import java.util.Locale
-import pw.kmr.sonnet.player.PlayerUiState
+import pw.kmr.sonnet.shared.playback.PlayerUiState
 
 @Composable
 internal fun MiniPlayer(

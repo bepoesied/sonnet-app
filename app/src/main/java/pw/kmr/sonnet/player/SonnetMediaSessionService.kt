@@ -13,6 +13,7 @@ import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import pw.kmr.sonnet.MainActivity
+import pw.kmr.sonnet.shared.playback.SEEK_INCREMENT_MS
 
 class SonnetMediaSessionService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
