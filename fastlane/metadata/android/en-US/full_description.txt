@@ -1,0 +1,7 @@
+Native Android app for Sonnet server.
+
+Features:
+- Connect to Sonnet server
+- Media playback support
+- OAuth authentication
+- Material Design 3 UI
