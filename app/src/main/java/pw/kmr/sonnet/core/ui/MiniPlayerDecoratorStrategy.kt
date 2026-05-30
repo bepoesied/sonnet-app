@@ -10,7 +10,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.scene.Scene
 import androidx.navigation3.scene.SceneDecoratorStrategy
 import androidx.navigation3.scene.SceneDecoratorStrategyScope
-import pw.kmr.sonnet.player.PlayerUiState
+import pw.kmr.sonnet.shared.playback.PlayerUiState
 
 class MiniPlayerDecoratorStrategy<T : Any>(
     private val playerState: PlayerUiState,

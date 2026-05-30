@@ -1,5 +1,6 @@
 package pw.kmr.sonnet.auth
 
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -24,8 +25,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.collectLatest
+import pw.kmr.sonnet.shared.auth.LoginEffect
 import pw.kmr.sonnet.shared.auth.LoginRepository
+import pw.kmr.sonnet.shared.auth.LoginViewModel
 import pw.kmr.sonnet.shared.auth.PlatformAuthProvider
+import pw.kmr.sonnet.shared.auth.loginViewModelFactory
 
 @Composable
 fun LoginRoute(
@@ -40,13 +44,14 @@ fun LoginRoute(
     val authLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        viewModel.completeLogin(result.data)
+        result.data?.let { viewModel.completeLogin(it) }
     }
 
     LaunchedEffect(viewModel) {
         viewModel.loginEffects.collectLatest { effect ->
             when (effect) {
-                is LoginEffect.OpenAuth -> authLauncher.launch(effect.intent)
+                is LoginEffect.OpenAuthBrowser -> authLauncher.launch(effect.authData as Intent)
+                is LoginEffect.LoginCompleted -> {}
             }
         }
     }

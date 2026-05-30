@@ -1,4 +1,4 @@
-package pw.kmr.sonnet.data.preferences
+package pw.kmr.sonnet.shared.auth
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -8,7 +8,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
-import pw.kmr.sonnet.shared.auth.SessionStore
 import pw.kmr.sonnet.shared.model.AuthSession
 import pw.kmr.sonnet.shared.model.SonnetUser
 import java.security.KeyStore

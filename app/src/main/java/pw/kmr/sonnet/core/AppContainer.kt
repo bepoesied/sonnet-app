@@ -5,12 +5,12 @@ import io.ktor.client.engine.okhttp.OkHttp
 import okhttp3.OkHttpClient
 import okio.FileSystem
 import pw.kmr.sonnet.BuildConfig
-import pw.kmr.sonnet.auth.AppAuthPlatformProvider
-import pw.kmr.sonnet.data.preferences.SessionRepository
-import pw.kmr.sonnet.player.PlaybackController
+import pw.kmr.sonnet.player.SonnetMediaSessionService
+import pw.kmr.sonnet.shared.auth.AppAuthPlatformProvider
 import pw.kmr.sonnet.shared.auth.AuthSessionManager
 import pw.kmr.sonnet.shared.auth.LoginRepository
 import pw.kmr.sonnet.shared.auth.PlatformAuthProvider
+import pw.kmr.sonnet.shared.auth.SessionRepository
 import pw.kmr.sonnet.shared.data.local.SonnetDatabase
 import pw.kmr.sonnet.shared.data.local.buildSonnetDatabase
 import pw.kmr.sonnet.shared.data.local.getSonnetDatabaseBuilder
@@ -18,12 +18,15 @@ import pw.kmr.sonnet.shared.data.preferences.AppSettingsRepository
 import pw.kmr.sonnet.shared.data.preferences.createAppSettingsDataStore
 import pw.kmr.sonnet.shared.library.LibraryRepository
 import pw.kmr.sonnet.shared.library.libraryDownloadDirectory
+import pw.kmr.sonnet.shared.playback.AndroidPlaybackEngine
+import pw.kmr.sonnet.shared.playback.PlaybackOrchestrator
 import pw.kmr.sonnet.shared.remote.AuthApiClient
 import pw.kmr.sonnet.shared.remote.AuthenticatedBooksApiClient
 import pw.kmr.sonnet.shared.remote.BooksApiClient
 import pw.kmr.sonnet.shared.remote.SonnetApiClient
+import pw.kmr.sonnet.shared.sync.AndroidNetworkMonitor
 import pw.kmr.sonnet.shared.sync.ProgressSyncer
-import pw.kmr.sonnet.sync.SyncCoordinator
+import pw.kmr.sonnet.shared.sync.SharedSyncCoordinator
 import java.util.concurrent.TimeUnit
 
 class AppContainer(context: Context) {
@@ -71,17 +74,23 @@ class AppContainer(context: Context) {
         playbackProgressDao = database.libraryDao()
     )
 
-    val syncCoordinator = SyncCoordinator(applicationContext, progressSyncer)
+    val networkMonitor = AndroidNetworkMonitor(applicationContext)
+    val syncCoordinator = SharedSyncCoordinator(networkMonitor, progressSyncer)
 
-    val playbackController = PlaybackController(
+    val playbackEngine = AndroidPlaybackEngine(
         context = applicationContext,
+        serviceClass = SonnetMediaSessionService::class.java
+    )
+
+    val playbackOrchestrator = PlaybackOrchestrator(
+        engine = playbackEngine,
         libraryRepository = libraryRepository,
         libraryDao = database.libraryDao(),
         progressSyncer = progressSyncer
     )
 
     fun dispose() {
-        playbackController.shutdown()
+        playbackOrchestrator.shutdown()
         sonnetApiClient.close()
         (platformAuthProvider as? AppAuthPlatformProvider)?.dispose()
         database.close()

@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
                     uiState = uiState,
                     appContainer = appContainer,
                     onLogout = {
-                        appContainer.playbackController.shutdown()
+                        appContainer.playbackOrchestrator.shutdown()
                         appViewModel.logout()
                     },
                     modifier = Modifier.fillMaxSize()
@@ -56,9 +56,9 @@ class MainActivity : ComponentActivity() {
     private fun handlePlayerIntent(intent: Intent, appContainer: pw.kmr.sonnet.core.AppContainer) {
         if (intent.action == SonnetMediaSessionService.ACTION_OPEN_PLAYER && intent.hashCode() != lastHandledIntentHashCode) {
             lastHandledIntentHashCode = intent.hashCode()
-            val bookId = appContainer.playbackController.state.value.bookId
+            val bookId = appContainer.playbackOrchestrator.state.value.bookId
             if (bookId != null) {
-                appContainer.playbackController.openFullPlayer(bookId)
+                appContainer.playbackOrchestrator.openFullPlayer(bookId)
             }
         }
     }
