@@ -63,7 +63,7 @@ class PlaybackOrchestrator(
             if (chapterEndSleepEnabled && reason == MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                 chapterEndSleepEnabled = false
                 engine.pause()
-                _state.update { it.copy(sleepTimer = SleepTimerState.Off) }
+                setSleepTimer(SleepTimerState.Off)
             }
         }
 
@@ -452,6 +452,6 @@ class PlaybackOrchestrator(
     }
 
     companion object {
-        const val MEDIA_ITEM_TRANSITION_REASON_AUTO = 0
+        const val MEDIA_ITEM_TRANSITION_REASON_AUTO = 1
     }
 }

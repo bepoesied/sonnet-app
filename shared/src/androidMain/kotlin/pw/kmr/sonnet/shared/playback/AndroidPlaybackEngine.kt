@@ -47,9 +47,10 @@ class AndroidPlaybackEngine(
             if (events.contains(Player.EVENT_POSITION_DISCONTINUITY)) {
                 listeners.forEach { it.onPositionDiscontinuity() }
             }
-            if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) {
-                listeners.forEach { it.onMediaItemTransition(player.currentMediaItemIndex, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) }
-            }
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            listeners.forEach { it.onMediaItemTransition(controller?.currentMediaItemIndex?.coerceAtLeast(0) ?: 0, reason) }
         }
 
         override fun onPlayerError(error: PlaybackException) {
