@@ -52,6 +52,9 @@ class PlaybackOrchestrator(
         override fun onPlaybackStateChanged(isPlaying: Boolean, playbackState: Int) {
             publishState()
             saveProgressSoon(forceSync = !isPlaying)
+            if (playbackState == PLAYBACK_STATE_ENDED) {
+                markBookComplete()
+            }
         }
 
         override fun onPositionDiscontinuity() {
@@ -351,6 +354,27 @@ class PlaybackOrchestrator(
         }
     }
 
+    private fun markBookComplete() {
+        val book = loadedBook ?: return
+        scope.launch(ioDispatcher) {
+            val now = currentTimeMillis()
+            libraryDao.deletePlaybackProgress(book.id)
+            libraryDao.updateLibraryItemCompletion(book.id, true, now)
+            libraryDao.updateDownloadedBookCompletion(book.id, true)
+            libraryDao.upsertPlaybackProgress(
+                PlaybackProgressEntity(
+                    libraryItemId = book.id,
+                    positionMillis = book.totalDurationMs(),
+                    durationMillis = book.totalDurationMs(),
+                    updatedAtEpochMillis = now,
+                    isCompleted = true,
+                    pendingSync = true
+                )
+            )
+            progressSyncer.syncBook(book.id)
+        }
+    }
+
     private suspend fun progressTicker() {
         while (true) {
             publishState()
@@ -453,5 +477,6 @@ class PlaybackOrchestrator(
 
     companion object {
         const val MEDIA_ITEM_TRANSITION_REASON_AUTO = 1
+        private const val PLAYBACK_STATE_ENDED = 4
     }
 }
