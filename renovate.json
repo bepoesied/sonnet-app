@@ -4,8 +4,5 @@
     "config:best-practices",
     ":disableRateLimiting",
     ":disableDependencyDashboard"
-  ],
-  "allowedUnsafeExecutions": [
-    "gradleWrapper"
   ]
 }
