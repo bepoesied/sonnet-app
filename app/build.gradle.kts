@@ -31,6 +31,7 @@ android {
 
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             manifestPlaceholders["networkSecurityConfig"] = "@xml/network_security_config_release"
             buildConfigField("Boolean", "ENFORCE_HTTPS", "true")
             proguardFiles(

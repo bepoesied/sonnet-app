@@ -43,6 +43,7 @@ class PlaybackOrchestrator(
     private var saveInFlight = false
     private var forceSyncAfterSave = false
     private var resumeCheckInFlight = false
+    private var playbackStarted = false
     private var lastPeriodicProgressSaveMs = 0L
     private var lastPeriodicProgressSyncMs = 0L
     private var chapterEndSleepEnabled = false
@@ -51,7 +52,7 @@ class PlaybackOrchestrator(
     private val engineListener = object : PlaybackEngineListener {
         override fun onPlaybackStateChanged(isPlaying: Boolean, playbackState: Int) {
             publishState()
-            saveProgressSoon(forceSync = !isPlaying)
+            if (playbackStarted) saveProgressSoon(forceSync = !isPlaying)
             if (playbackState == PLAYBACK_STATE_ENDED) {
                 markBookComplete()
             }
@@ -59,7 +60,7 @@ class PlaybackOrchestrator(
 
         override fun onPositionDiscontinuity() {
             publishState()
-            saveProgressSoon(forceSync = !engine.isPlaying())
+            if (playbackStarted) saveProgressSoon(forceSync = !engine.isPlaying())
         }
 
         override fun onMediaItemTransition(index: Int, reason: Int) {
@@ -89,6 +90,7 @@ class PlaybackOrchestrator(
             publishState()
             return
         }
+        playbackStarted = false
         libraryRepository.prepareBookForPlayback(bookId)
         val book = libraryRepository.downloadedBook(bookId) ?: return
         val startPosition = reconcileProgressOnOpen(book)
@@ -124,6 +126,7 @@ class PlaybackOrchestrator(
 
         scope.launch {
             if (reconcileProgressBeforePlay(book)) {
+                playbackStarted = true
                 engine.play()
             }
         }
@@ -185,7 +188,8 @@ class PlaybackOrchestrator(
 
     fun shutdown() {
         engine.pause()
-        saveProgressSoon(forceSync = true)
+        if (playbackStarted) saveProgressSoon(forceSync = true)
+        playbackStarted = false
         loadedBook = null
         engine.removeListener(engineListener)
         engine.release()
@@ -222,51 +226,7 @@ class PlaybackOrchestrator(
     }
 
     private suspend fun reconcileProgressOnOpen(book: DownloadedBook): Long {
-        val localProgress = libraryDao.playbackProgress(book.id)
-        val remoteProgress = progressSyncer.remoteProgress(book.id)
-        val remoteUpdatedAt = remoteProgress?.updatedAtEpochMillis
-        val remotePosition = remoteProgress?.chapterId?.let { chapterId ->
-            book.positionFor(chapterId, remoteProgress.offsetMillis)
-        }
-
-        if (remoteUpdatedAt != null && remotePosition != null) {
-            val localUpdatedAt = localProgress?.updatedAtEpochMillis ?: 0L
-            if (remoteUpdatedAt > localUpdatedAt) {
-                val chapterProgress = book.progressAt(remotePosition)
-                libraryDao.upsertPlaybackProgress(
-                    PlaybackProgressEntity(
-                        libraryItemId = book.id,
-                        chapterId = chapterProgress.chapterId,
-                        chapterOffsetMillis = chapterProgress.chapterOffsetMs,
-                        positionMillis = remotePosition,
-                        durationMillis = book.totalDurationMs(),
-                        updatedAtEpochMillis = remoteUpdatedAt,
-                        isCompleted = remoteProgress.isCompleted,
-                        pendingSync = false
-                    )
-                )
-                return remotePosition
-            }
-
-            if (localProgress != null && localUpdatedAt > remoteUpdatedAt) {
-                val chapterProgress = book.progressAt(localProgress.positionMillis)
-                libraryDao.upsertPlaybackProgress(
-                    localProgress.copy(
-                        chapterId = chapterProgress.chapterId,
-                        chapterOffsetMillis = chapterProgress.chapterOffsetMs,
-                        durationMillis = book.totalDurationMs(),
-                        pendingSync = true
-                    )
-                )
-                scope.launch(ioDispatcher) { progressSyncer.syncBook(book.id) }
-                return localProgress.positionMillis
-            }
-        }
-
-        if (localProgress?.pendingSync == true) {
-            scope.launch(ioDispatcher) { progressSyncer.syncBook(book.id) }
-        }
-        return localProgress?.positionMillis ?: 0L
+        return libraryDao.playbackProgress(book.id)?.positionMillis ?: 0L
     }
 
     private suspend fun reconcileProgressBeforePlay(book: DownloadedBook): Boolean {
