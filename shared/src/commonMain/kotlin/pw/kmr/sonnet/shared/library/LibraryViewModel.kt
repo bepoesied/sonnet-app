@@ -24,14 +24,26 @@ class LibraryViewModel(
     private val refreshState = MutableStateFlow(RefreshState())
     private val downloadJobs = mutableMapOf<String, Job>()
     private val downloadJobsMutex = Mutex()
+    private val searchQuery = MutableStateFlow("")
 
-    val uiState: StateFlow<LibraryUiState> = combine(repository.libraryItems, refreshState) { books, refresh ->
+    val uiState: StateFlow<LibraryUiState> = combine(
+        repository.libraryItems, refreshState, searchQuery
+    ) { books, refresh, query ->
+        val filtered = if (query.isBlank()) books
+        else {
+            val lowerQuery = query.lowercase()
+            books.filter { book ->
+                book.title.lowercase().contains(lowerQuery) ||
+                    book.author?.lowercase()?.contains(lowerQuery) == true
+            }
+        }
         LibraryUiState(
-            books = books,
+            books = filtered,
             isRefreshing = refresh.isRefreshing,
             lastRefreshFailed = refresh.lastErrorMessage != null,
             errorMessage = refresh.lastErrorMessage,
-            initialLoadComplete = true
+            initialLoadComplete = true,
+            searchQuery = query
         )
     }.stateIn(
         scope = viewModelScope,
@@ -64,6 +76,10 @@ class LibraryViewModel(
 
     fun clearError() {
         refreshState.value = refreshState.value.copy(lastErrorMessage = null)
+    }
+
+    fun updateSearchQuery(query: String) {
+        searchQuery.value = query
     }
 
     fun swipeDownloadAction(book: LibraryBook) {
@@ -166,7 +182,8 @@ data class LibraryUiState(
     val isRefreshing: Boolean = false,
     val lastRefreshFailed: Boolean = false,
     val errorMessage: String? = null,
-    val initialLoadComplete: Boolean = false
+    val initialLoadComplete: Boolean = false,
+    val searchQuery: String = ""
 )
 
 private data class RefreshState(

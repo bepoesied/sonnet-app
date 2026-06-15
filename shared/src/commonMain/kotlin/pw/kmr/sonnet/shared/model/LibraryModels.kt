@@ -12,7 +12,8 @@ data class LibraryBook(
     val localCoverUri: String?,
     val remoteCoverUrl: String?,
     val progressPercent: Float?,
-    val totalDurationMillis: Long? = null
+    val totalDurationMillis: Long? = null,
+    val lastListenedAtEpochMillis: Long? = null
 )
 
 data class DownloadedBook(

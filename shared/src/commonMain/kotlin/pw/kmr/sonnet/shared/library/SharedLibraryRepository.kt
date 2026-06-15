@@ -132,7 +132,8 @@ object LibraryProjector {
                 totalChapters = download?.totalBytes,
                 localCoverUri = downloadedBook?.coverFilePath,
                 remoteCoverUrl = item.coverImageUrl,
-                progressPercent = bookProgress?.percentComplete()
+                progressPercent = bookProgress?.percentComplete(),
+                lastListenedAtEpochMillis = bookProgress?.updatedAtEpochMillis
             )
         }
         val remoteIds = items.mapTo(mutableSetOf()) { it.id }
@@ -153,11 +154,16 @@ object LibraryProjector {
                     totalChapters = download?.totalBytes,
                     localCoverUri = book.coverFilePath,
                     remoteCoverUrl = null,
-                    progressPercent = bookProgress?.percentComplete()
+                    progressPercent = bookProgress?.percentComplete(),
+                    lastListenedAtEpochMillis = bookProgress?.updatedAtEpochMillis
                 )
             }
 
-        return (remoteBooks + localOnlyBooks).sortedBy { it.title.lowercase() }
+        return (remoteBooks + localOnlyBooks).sortedWith(
+            compareByDescending<LibraryBook> { it.lastListenedAtEpochMillis != null }
+                .thenByDescending { it.lastListenedAtEpochMillis ?: 0L }
+                .thenBy { it.title.lowercase() }
+        )
     }
 }
 
