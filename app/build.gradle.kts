@@ -69,7 +69,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     implementation(libs.okhttp)
     implementation(libs.ktor.client.okhttp)
-    implementation(libs.retrofit)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.androidx.media3.exoplayer)
