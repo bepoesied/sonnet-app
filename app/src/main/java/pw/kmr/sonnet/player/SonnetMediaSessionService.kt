@@ -46,6 +46,7 @@ class SonnetMediaSessionService : MediaSessionService() {
                         .build(),
                     true
                 )
+                setHandleAudioBecomingNoisy(true)
                 trackSelectionParameters = trackSelectionParameters
                     .buildUpon()
                     .setAudioOffloadPreferences(
