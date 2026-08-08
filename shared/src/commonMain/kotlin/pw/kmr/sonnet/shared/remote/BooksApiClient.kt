@@ -3,6 +3,7 @@ package pw.kmr.sonnet.shared.remote
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -76,25 +77,28 @@ class BooksApiClient(
     }
 
     suspend fun download(url: String, targetPath: Path, fileSystem: FileSystem): FileDownloadResult {
-        val response = apiClient.httpClient.get(url)
-        if (!response.status.isSuccess()) {
-            throw ApiException(response.status.value, response.bodyAsText())
-        }
-
         targetPath.parent?.let(fileSystem::createDirectories)
-        val channel = response.bodyAsChannel()
-        val sink = fileSystem.sink(targetPath).buffer()
-        try {
-            val buffer = ByteArray(8_192)
-            while (true) {
-                val read = channel.readAvailable(buffer)
-                if (read <= 0) break
-                sink.write(buffer, 0, read)
+
+        return apiClient.httpClient.prepareGet(url).execute { response ->
+            if (!response.status.isSuccess()) {
+                throw ApiException(response.status.value, response.bodyAsText())
             }
-        } finally {
-            sink.close()
+
+            val channel = response.bodyAsChannel()
+            val sink = fileSystem.sink(targetPath).buffer()
+            try {
+                val buffer = ByteArray(8_192)
+                while (true) {
+                    val read = channel.readAvailable(buffer)
+                    if (read <= 0) break
+                    sink.write(buffer, 0, read)
+                }
+            } finally {
+                sink.close()
+            }
+
+            FileDownloadResult(response.headers[HttpHeaders.ContentType])
         }
-        return FileDownloadResult(response.headers[HttpHeaders.ContentType])
     }
 
     private suspend fun updateCompletion(
