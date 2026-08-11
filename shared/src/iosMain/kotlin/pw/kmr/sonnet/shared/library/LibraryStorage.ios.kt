@@ -9,7 +9,7 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
 
 @OptIn(ExperimentalForeignApi::class)
-fun libraryDownloadDirectory(): Path {
+fun iosLibraryDownloadDirectory(): Path {
     val directoryUrl: NSURL = requireNotNull(
         NSFileManager.defaultManager.URLForDirectory(
             directory = NSDocumentDirectory,

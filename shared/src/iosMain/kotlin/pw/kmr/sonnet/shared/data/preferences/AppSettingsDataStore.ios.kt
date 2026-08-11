@@ -10,7 +10,7 @@ import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
 
-fun createAppSettingsDataStore(): DataStore<Preferences> {
+fun iosCreateAppSettingsDataStore(): DataStore<Preferences> {
     return createAppSettingsDataStore(
         storage = OkioStorage(
             fileSystem = FileSystem.SYSTEM,

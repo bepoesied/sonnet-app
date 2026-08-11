@@ -6,7 +6,7 @@ import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
 
-fun getSonnetDatabaseBuilder(): RoomDatabase.Builder<SonnetDatabase> {
+fun iosGetSonnetDatabaseBuilder(): RoomDatabase.Builder<SonnetDatabase> {
     val dbFilePath = documentDirectory() + "/$SONNET_DATABASE_NAME"
     return Room.databaseBuilder<SonnetDatabase>(
         name = dbFilePath,
