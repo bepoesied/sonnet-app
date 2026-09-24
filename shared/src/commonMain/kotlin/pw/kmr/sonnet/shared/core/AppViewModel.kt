@@ -16,7 +16,7 @@ import pw.kmr.sonnet.shared.model.AuthSession
 
 class AppViewModel(
     private val repository: AppViewModelRepository,
-    authSessionManager: AuthSessionManager
+    private val authSessionManager: AuthSessionManager
 ) : ViewModel() {
     private val bootstrapComplete = MutableStateFlow(false)
     private val session = authSessionManager.currentSession.stateIn(
@@ -37,6 +37,9 @@ class AppViewModel(
         viewModelScope.launch {
             repository.bootstrapSession()
             bootstrapComplete.value = true
+
+            // Network validation is deliberately detached from routing to the cached session.
+            launch { authSessionManager.refreshStoredSession() }
         }
     }
 

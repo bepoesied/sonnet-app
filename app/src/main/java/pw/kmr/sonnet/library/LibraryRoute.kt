@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -121,8 +120,17 @@ private fun LibraryContent(
     modifier: Modifier = Modifier
 ) {
     when {
-        !uiState.initialLoadComplete -> LoadingLibrary(modifier = modifier)
-        uiState.books.isEmpty() && uiState.isRefreshing -> LoadingLibrary(modifier = modifier)
+        !uiState.initialLoadComplete -> LibraryLoadingContent(
+            query = uiState.searchQuery,
+            onSearchQueryChange = onSearchQueryChange,
+            modifier = modifier
+        )
+
+        uiState.books.isEmpty() && uiState.isRefreshing -> LibraryLoadingContent(
+            query = uiState.searchQuery,
+            onSearchQueryChange = onSearchQueryChange,
+            modifier = modifier
+        )
         uiState.books.isEmpty() && uiState.searchQuery.isBlank() -> EmptyLibrary(
             lastRefreshFailed = uiState.lastRefreshFailed,
             modifier = modifier
@@ -157,6 +165,29 @@ private fun LibraryContent(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LibraryLoadingContent(
+    query: String,
+    onSearchQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        // Use the real control so its dimensions and position match the populated library.
+        LibrarySearchBar(
+            query = query,
+            onQueryChange = onSearchQueryChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+        LibrarySkeleton(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        )
     }
 }
 
@@ -381,13 +412,51 @@ private fun CoverImage(book: LibraryBook, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun LoadingLibrary(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+private fun LibrarySkeleton(modifier: Modifier = Modifier) {
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
     ) {
-        CircularProgressIndicator()
+        items(count = 7, key = { it }) {
+            Row(
+                modifier = Modifier.padding(vertical = 14.dp),
+                verticalAlignment = CenterVertically
+            ) {
+                SkeletonBlock(modifier = Modifier.size(72.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    SkeletonBlock(
+                        modifier = Modifier
+                            .fillMaxWidth(0.72f)
+                            .height(20.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SkeletonBlock(
+                        modifier = Modifier
+                            .fillMaxWidth(0.5f)
+                            .height(16.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    SkeletonBlock(
+                        modifier = Modifier
+                            .fillMaxWidth(0.6f)
+                            .height(14.dp)
+                    )
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(start = 84.dp))
+        }
     }
+}
+
+/** A Material-themed skeleton block; Compose has no official Material 3 placeholder component. */
+@Composable
+private fun SkeletonBlock(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+    )
 }
 
 @Composable

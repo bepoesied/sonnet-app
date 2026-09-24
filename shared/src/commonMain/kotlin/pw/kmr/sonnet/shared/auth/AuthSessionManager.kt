@@ -30,8 +30,17 @@ class AuthSessionManager(
 
     fun requiresLogin(): Boolean = sessionStore.requiresLogin()
 
+    /** Loads the persisted session only; startup must not wait for network validation. */
     suspend fun bootstrapSession() {
-        val session = sessionStore.loadStoredSession() ?: return
+        sessionStore.loadStoredSession()
+    }
+
+    /**
+     * Best-effort session validation for use after the app is already usable. A failure preserves
+     * the persisted session, allowing cached library content to remain available offline.
+     */
+    suspend fun refreshStoredSession() {
+        val session = storedSession() ?: return
         try {
             val user = authRemoteDataSource.me(session.serverUrl, session.accessToken)
             saveSession(session.copy(user = user))

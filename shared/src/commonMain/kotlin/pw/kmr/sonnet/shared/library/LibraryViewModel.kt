@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -25,14 +28,24 @@ class LibraryViewModel(
     private val downloadJobs = mutableMapOf<String, Job>()
     private val downloadJobsMutex = Mutex()
     private val searchQuery = MutableStateFlow("")
+    private var refreshInProgress = false
+
+    // Keep one eagerly collected database stream so startup refresh cannot delay cached content.
+    private val localLibrary = repository.libraryItems
+        .map { books -> LocalLibraryState(books = books, hasLoaded = true) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = LocalLibraryState()
+        )
 
     val uiState: StateFlow<LibraryUiState> = combine(
-        repository.libraryItems, refreshState, searchQuery
-    ) { books, refresh, query ->
-        val filtered = if (query.isBlank()) books
+        localLibrary, refreshState, searchQuery
+    ) { local, refresh, query ->
+        val filtered = if (query.isBlank()) local.books
         else {
             val lowerQuery = query.lowercase()
-            books.filter { book ->
+            local.books.filter { book ->
                 book.title.lowercase().contains(lowerQuery) ||
                     book.author?.lowercase()?.contains(lowerQuery) == true
             }
@@ -42,7 +55,7 @@ class LibraryViewModel(
             isRefreshing = refresh.isRefreshing,
             lastRefreshFailed = refresh.lastErrorMessage != null,
             errorMessage = refresh.lastErrorMessage,
-            initialLoadComplete = true,
+            initialLoadComplete = local.hasLoaded,
             searchQuery = query
         )
     }.stateIn(
@@ -53,24 +66,37 @@ class LibraryViewModel(
 
     init {
         resumeInterruptedDownloads()
-        refresh()
+        refreshAfterLocalLibraryIsLoaded()
     }
 
-    fun refresh() {
-        if (refreshState.value.isRefreshing) return
+    private fun refreshAfterLocalLibraryIsLoaded() {
+        viewModelScope.launch {
+            localLibrary.first { it.hasLoaded }
+            refresh(showProgress = false)
+        }
+    }
+
+    fun refresh(showProgress: Boolean = true) {
+        if (refreshInProgress) return
+        refreshInProgress = true
 
         viewModelScope.launch {
-            refreshState.value = RefreshState(isRefreshing = true)
+            if (showProgress) refreshState.value = RefreshState(isRefreshing = true)
+
             runCatching { repository.refresh() }
                 .onSuccess {
-                    refreshState.value = RefreshState(isRefreshing = false)
+                    if (showProgress) refreshState.value = RefreshState(isRefreshing = false)
                 }
                 .onFailure { throwable ->
-                    refreshState.value = RefreshState(
-                        isRefreshing = false,
-                        lastErrorMessage = throwable.message ?: "Library refresh failed."
-                    )
+                    if (showProgress) {
+                        refreshState.value = RefreshState(
+                            isRefreshing = false,
+                            lastErrorMessage = throwable.message ?: "Library refresh failed."
+                        )
+                    }
                 }
+
+            refreshInProgress = false
         }
     }
 
@@ -189,4 +215,9 @@ data class LibraryUiState(
 private data class RefreshState(
     val isRefreshing: Boolean = false,
     val lastErrorMessage: String? = null
+)
+
+private data class LocalLibraryState(
+    val books: List<LibraryBook> = emptyList(),
+    val hasLoaded: Boolean = false
 )

@@ -32,7 +32,12 @@ class LibraryRepository(
 
     override val libraryItems: Flow<List<LibraryBook>> = sharedRepository.libraryItems
 
-    override suspend fun refresh() {
+    /**
+     * A refresh is a best-effort cache update. Keep its entire network-to-database path off the
+     * main dispatcher so a slow or stalled connection cannot prevent Room-backed UI state from
+     * being rendered.
+     */
+    override suspend fun refresh() = withContext(Dispatchers.IO) {
         sharedRepository.refresh()
     }
 
