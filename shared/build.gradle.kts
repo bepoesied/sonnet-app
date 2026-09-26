@@ -20,7 +20,7 @@ kotlin {
         namespace = "pw.kmr.sonnet.shared"
         compileSdk {
             version = release(37) {
-                minorApiLevel = 0
+                minorApiLevel = 2
             }
         }
         minSdk = 33
