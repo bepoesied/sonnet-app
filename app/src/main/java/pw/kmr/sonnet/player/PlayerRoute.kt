@@ -42,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -76,6 +77,7 @@ fun PlayerRoute(
     isDownloaded: Boolean,
     playbackOrchestrator: PlaybackOrchestrator,
     onBack: () -> Unit,
+    onDialogVisibilityChange: (Boolean) -> Unit = {},
     coverModifier: Modifier = Modifier,
     playButtonModifier: Modifier = Modifier,
     progressModifier: Modifier = Modifier,
@@ -122,6 +124,7 @@ fun PlayerRoute(
                 onSetSleepTimer = viewModel::setSleepTimer,
                 onUseRemoteProgress = viewModel::useRemoteProgress,
                 onKeepLocalProgress = viewModel::keepLocalProgress,
+                onDialogVisibilityChange = onDialogVisibilityChange,
                 coverModifier = coverModifier,
                 playButtonModifier = playButtonModifier,
                 progressModifier = progressModifier,
@@ -181,6 +184,7 @@ private fun PlayerContent(
     onSetSleepTimer: (SleepTimerState) -> Unit,
     onUseRemoteProgress: () -> Unit,
     onKeepLocalProgress: () -> Unit,
+    onDialogVisibilityChange: (Boolean) -> Unit,
     coverModifier: Modifier = Modifier,
     playButtonModifier: Modifier = Modifier,
     progressModifier: Modifier = Modifier,
@@ -196,6 +200,9 @@ private fun PlayerContent(
     }
 
     val resumePrompt = uiState.resumePrompt
+    // Dialogs use their own window/back handling. While one is shown the app-level player
+    // gesture must not also dismiss the sheet behind it.
+    SideEffect { onDialogVisibilityChange(resumePrompt != null || showChapters || showSleepTimer) }
     if (resumePrompt != null) {
         ResumeProgressDialog(
             prompt = resumePrompt,
