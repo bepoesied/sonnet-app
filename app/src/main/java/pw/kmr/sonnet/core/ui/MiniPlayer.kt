@@ -43,10 +43,12 @@ internal fun MiniPlayer(
     uiState: PlayerUiState,
     onClick: () -> Unit,
     onPlayPause: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     Surface(
         onClick = onClick,
+        enabled = enabled,
         tonalElevation = 6.dp,
         shadowElevation = 8.dp,
         modifier = modifier
@@ -88,7 +90,7 @@ internal fun MiniPlayer(
                 }
                 IconButton(
                     onClick = onPlayPause,
-                    enabled = uiState.canPlay && !uiState.isCheckingRemoteState
+                    enabled = enabled && uiState.canPlay && !uiState.isCheckingRemoteState
                 ) {
                     Icon(
                         imageVector = if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
