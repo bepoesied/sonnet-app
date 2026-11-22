@@ -2,13 +2,12 @@ import SwiftUI
 import sharedKit
 
 struct LibraryView: View {
-    @State private var store: LibraryStore
-    @State private var showLogoutConfirmation = false
-    @State private var bookPendingDelete: LibraryBook?
-
+    private let container: IosAppContainer
     private let onOpenPlayer: (LibraryBook) -> Void
     private let onLogout: () -> Void
     private let onReauthenticate: () -> Void
+
+    @State private var store: LibraryStore?
 
     init(
         container: IosAppContainer,
@@ -16,11 +15,51 @@ struct LibraryView: View {
         onLogout: @escaping () -> Void,
         onReauthenticate: @escaping () -> Void
     ) {
-        self._store = State(initialValue: LibraryStore(container: container))
+        self.container = container
         self.onOpenPlayer = onOpenPlayer
         self.onLogout = onLogout
         self.onReauthenticate = onReauthenticate
     }
+
+    var body: some View {
+        Group {
+            if let store {
+                LibraryContentScreen(
+                    store: store,
+                    onOpenPlayer: onOpenPlayer,
+                    onLogout: onLogout,
+                    onReauthenticate: onReauthenticate
+                )
+            } else {
+                NavigationStack {
+                    List {
+                        ForEach(0..<7, id: \.self) { _ in
+                            LibrarySkeletonRow()
+                                .listRowSeparator(.visible)
+                        }
+                    }
+                    .listStyle(.plain)
+                    .disabled(true)
+                    .navigationTitle("Library")
+                }
+            }
+        }
+        .onAppear {
+            if store == nil {
+                store = LibraryStore(container: container)
+            }
+        }
+    }
+}
+
+private struct LibraryContentScreen: View {
+    let store: LibraryStore
+    let onOpenPlayer: (LibraryBook) -> Void
+    let onLogout: () -> Void
+    let onReauthenticate: () -> Void
+
+    @State private var showLogoutConfirmation = false
+    @State private var bookPendingDelete: LibraryBook?
 
     var body: some View {
         NavigationStack {
@@ -144,6 +183,9 @@ struct LibraryView: View {
                         },
                         onDownloadAction: {
                             handleDownloadTap(book)
+                        },
+                        onCompletionAction: {
+                            store.toggleCompletion(for: book)
                         }
                     )
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -269,6 +311,7 @@ private struct LibraryBookRow: View {
     let book: LibraryBook
     let onTap: () -> Void
     let onDownloadAction: () -> Void
+    let onCompletionAction: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
@@ -310,10 +353,15 @@ private struct LibraryBookRow: View {
                             .tint(SonnetColors.accent)
                             .padding(.top, 2)
                     } else {
-                        ProgressView()
-                            .progressViewStyle(.linear)
-                            .tint(SonnetColors.accent)
-                            .padding(.top, 2)
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(SonnetColors.accent)
+                            Text("Preparing download…")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 2)
                     }
                 }
             }
@@ -324,7 +372,12 @@ private struct LibraryBookRow: View {
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
-        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: book.downloadStatus.actionLabel) {
+            onDownloadAction()
+        }
+        .accessibilityAction(named: book.isCompleted ? "Mark unplayed" : "Mark played") {
+            onCompletionAction()
+        }
     }
 
     @ViewBuilder

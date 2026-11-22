@@ -44,6 +44,7 @@ struct MiniPlayerBar: View {
                     monogramFont: .headline,
                     crossfade: false
                 )
+                .id(state.bookId)
                 .frame(width: 50, height: 50)
 
                 VStack(alignment: .leading, spacing: 2) {

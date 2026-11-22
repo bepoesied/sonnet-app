@@ -271,7 +271,11 @@ final class AVFoundationPlaybackDriver: NSObject, PlaybackPlatformDriver {
             if positionMs > 0 {
                 let target = CMTime(value: positionMs, timescale: 1000)
                 player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                    self?.updateNowPlayingInfo()
+                    self?.runOnMain {
+                        guard let self else { return }
+                        self.updateNowPlayingInfo()
+                        self.callback?.onPositionDiscontinuity()
+                    }
                 }
             }
             if autoPlay {
@@ -287,9 +291,11 @@ final class AVFoundationPlaybackDriver: NSObject, PlaybackPlatformDriver {
         let clampedSeconds = max(seconds, 0)
         let target = CMTime(seconds: clampedSeconds, preferredTimescale: 1000)
         player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            guard let self else { return }
-            self.updateNowPlayingInfo()
-            self.callback?.onPositionDiscontinuity()
+            self?.runOnMain {
+                guard let self else { return }
+                self.updateNowPlayingInfo()
+                self.callback?.onPositionDiscontinuity()
+            }
         }
     }
 
@@ -475,74 +481,97 @@ final class AVFoundationPlaybackDriver: NSObject, PlaybackPlatformDriver {
 
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
-            guard let self, !self.items.isEmpty else { return .noActionableNowPlayingItem }
-            self.play()
-            return .success
+            guard let self else { return .noActionableNowPlayingItem }
+            return self.runOnMainSync {
+                guard !self.items.isEmpty else { return .noActionableNowPlayingItem }
+                self.play()
+                return .success
+            }
         }
 
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            guard let self, !self.items.isEmpty else { return .noActionableNowPlayingItem }
-            self.pause()
-            return .success
+            guard let self else { return .noActionableNowPlayingItem }
+            return self.runOnMainSync {
+                guard !self.items.isEmpty else { return .noActionableNowPlayingItem }
+                self.pause()
+                return .success
+            }
         }
 
         commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            guard let self, !self.items.isEmpty else { return .noActionableNowPlayingItem }
-            if self.isPlayingOnMain() {
-                self.pause()
-            } else {
-                self.play()
+            guard let self else { return .noActionableNowPlayingItem }
+            return self.runOnMainSync {
+                guard !self.items.isEmpty else { return .noActionableNowPlayingItem }
+                if self.isPlayingOnMain() {
+                    self.pause()
+                } else {
+                    self.play()
+                }
+                return .success
             }
-            return .success
         }
 
         commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: seekIncrementSeconds)]
         commandCenter.skipBackwardCommand.addTarget { [weak self] _ in
-            guard let self, !self.items.isEmpty else { return .noActionableNowPlayingItem }
-            self.seekBack()
-            return .success
+            guard let self else { return .noActionableNowPlayingItem }
+            return self.runOnMainSync {
+                guard !self.items.isEmpty else { return .noActionableNowPlayingItem }
+                self.seekBack()
+                return .success
+            }
         }
 
         commandCenter.skipForwardCommand.isEnabled = true
         commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: seekIncrementSeconds)]
         commandCenter.skipForwardCommand.addTarget { [weak self] _ in
-            guard let self, !self.items.isEmpty else { return .noActionableNowPlayingItem }
-            self.seekForward()
-            return .success
+            guard let self else { return .noActionableNowPlayingItem }
+            return self.runOnMainSync {
+                guard !self.items.isEmpty else { return .noActionableNowPlayingItem }
+                self.seekForward()
+                return .success
+            }
         }
 
         commandCenter.changePlaybackPositionCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let self,
-                  !self.items.isEmpty,
                   let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
                 return .commandFailed
             }
-            self.seekWithinCurrentChapterOnMain(toSeconds: positionEvent.positionTime)
-            return .success
+            return self.runOnMainSync {
+                guard !self.items.isEmpty else { return .noActionableNowPlayingItem }
+                self.seekWithinCurrentChapterOnMain(toSeconds: positionEvent.positionTime)
+                return .success
+            }
         }
 
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            guard let self, self.currentIndex + 1 < self.items.count else {
-                return .noSuchContent
+            guard let self else { return .noSuchContent }
+            return self.runOnMainSync {
+                guard self.currentIndex + 1 < self.items.count else {
+                    return .noSuchContent
+                }
+                self.seekToChapter(chapterIndex: Int32(self.currentIndex + 1), positionMs: 0)
+                return .success
             }
-            self.seekToChapter(chapterIndex: Int32(self.currentIndex + 1), positionMs: 0)
-            return .success
         }
 
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            guard let self, !self.items.isEmpty else { return .noActionableNowPlayingItem }
-            if self.currentPositionSecondsOnMain() > 3.0 || self.currentIndex == 0 {
-                self.seekWithinCurrentChapterOnMain(toSeconds: 0)
-            } else {
-                self.seekToChapter(chapterIndex: Int32(self.currentIndex - 1), positionMs: 0)
+            guard let self else { return .noActionableNowPlayingItem }
+            return self.runOnMainSync {
+                guard !self.items.isEmpty else { return .noActionableNowPlayingItem }
+                if self.currentPositionSecondsOnMain() > 3.0 || self.currentIndex == 0 {
+                    self.seekWithinCurrentChapterOnMain(toSeconds: 0)
+                } else {
+                    self.seekToChapter(chapterIndex: Int32(self.currentIndex - 1), positionMs: 0)
+                }
+                return .success
             }
-            return .success
         }
     }
 

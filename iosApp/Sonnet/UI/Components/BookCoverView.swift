@@ -52,11 +52,13 @@ struct BookCoverView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityTitle)
         .task(id: taskKey) {
+            loadedImage = nil
             let image = await CoverImageLoader.shared.loadImage(
                 bookId: bookId,
                 localCoverPath: localCoverPath,
                 remoteCoverUrl: remoteCoverUrl
             )
+            guard !Task.isCancelled else { return }
             if crossfade {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     loadedImage = image

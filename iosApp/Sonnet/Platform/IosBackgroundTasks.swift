@@ -48,6 +48,8 @@ enum SonnetBackgroundTasks {
         task: BGAppRefreshTask,
         containerProvider: @escaping @MainActor () -> IosAppContainer
     ) {
+        let completion = OneShotBGTaskCompletion(task: task)
+
         let work = Task {
             let container = await MainActor.run { containerProvider() }
             do {
@@ -55,17 +57,17 @@ enum SonnetBackgroundTasks {
                 if !completed {
                     scheduleProgressSync()
                 }
-                task.setTaskCompleted(success: completed)
+                completion.complete(success: completed)
             } catch {
                 scheduleProgressSync()
-                task.setTaskCompleted(success: false)
+                completion.complete(success: false)
             }
         }
 
         task.expirationHandler = {
             work.cancel()
             scheduleProgressSync()
-            task.setTaskCompleted(success: false)
+            completion.complete(success: false)
         }
     }
 
@@ -73,6 +75,8 @@ enum SonnetBackgroundTasks {
         task: BGProcessingTask,
         containerProvider: @escaping @MainActor () -> IosAppContainer
     ) {
+        let completion = OneShotBGTaskCompletion(task: task)
+
         let work = Task {
             let container = await MainActor.run { containerProvider() }
             do {
@@ -92,18 +96,43 @@ enum SonnetBackgroundTasks {
                 if !allSucceeded {
                     scheduleDownloadResume()
                 }
-                task.setTaskCompleted(success: allSucceeded)
+                completion.complete(success: allSucceeded)
             } catch {
                 scheduleDownloadResume()
-                task.setTaskCompleted(success: false)
+                completion.complete(success: false)
             }
         }
 
         task.expirationHandler = {
             work.cancel()
+            Task { @MainActor in
+                containerProvider().cancelAllBookDownloads()
+            }
             scheduleDownloadResume()
-            task.setTaskCompleted(success: false)
+            completion.complete(success: false)
         }
+    }
+}
+
+private final class OneShotBGTaskCompletion {
+    private let lock = NSLock()
+    private var completed = false
+    private let task: BGTask
+
+    init(task: BGTask) {
+        self.task = task
+    }
+
+    func complete(success: Bool) {
+        lock.lock()
+        guard !completed else {
+            lock.unlock()
+            return
+        }
+        completed = true
+        lock.unlock()
+
+        task.setTaskCompleted(success: success)
     }
 }
 
@@ -115,14 +144,16 @@ final class IosBackgroundSyncScheduler: NSObject, BackgroundSyncScheduler {
 }
 
 /// iOS implementation of `BookDownloadScheduler` that runs per-book downloads with
-/// `UIApplication.beginBackgroundTask` protection and `BGProcessingTask` resumption.
+/// `UIApplication.beginBackgroundTask` protection, true Kotlin coroutine cancellation,
+/// and `BGProcessingTask` resumption.
 final class IosBookDownloadScheduler: NSObject, BookDownloadScheduler {
     private let lock = NSLock()
     private weak var container: IosAppContainer?
     private var activeDownloads: [String: ActiveDownload] = [:]
 
     private struct ActiveDownload {
-        let task: Task<Void, Never>
+        let token: UUID
+        var task: Task<Void, Never>?
         var backgroundTaskId: UIBackgroundTaskIdentifier
     }
 
@@ -133,18 +164,22 @@ final class IosBookDownloadScheduler: NSObject, BookDownloadScheduler {
     }
 
     func enqueueDownload(bookId: String, restartInProgress: Bool) {
+        let token = UUID()
+
         lock.lock()
         guard activeDownloads[bookId] == nil, let container else {
             lock.unlock()
             return
         }
+        // Reserve the slot before starting async work to prevent concurrent registration races.
+        activeDownloads[bookId] = ActiveDownload(token: token, task: nil, backgroundTaskId: .invalid)
         lock.unlock()
 
         var bgTaskId: UIBackgroundTaskIdentifier = .invalid
         let beginBgTask = {
             bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "sonnet-download-\(bookId)") { [weak self] in
                 SonnetBackgroundTasks.scheduleDownloadResume()
-                self?.finishBackgroundTask(bookId: bookId)
+                self?.finishBackgroundTask(bookId: bookId, token: token)
             }
         }
         if Thread.isMainThread {
@@ -155,7 +190,7 @@ final class IosBookDownloadScheduler: NSObject, BookDownloadScheduler {
 
         let downloadTask = Task.detached(priority: .utility) { [weak self] in
             defer {
-                self?.cleanupDownload(bookId: bookId)
+                self?.cleanupDownload(bookId: bookId, token: token)
             }
             do {
                 try await container.downloadBookForBackgroundTask(
@@ -172,16 +207,30 @@ final class IosBookDownloadScheduler: NSObject, BookDownloadScheduler {
         }
 
         lock.lock()
-        activeDownloads[bookId] = ActiveDownload(task: downloadTask, backgroundTaskId: bgTaskId)
-        lock.unlock()
+        if var entry = activeDownloads[bookId], entry.token == token {
+            entry.task = downloadTask
+            entry.backgroundTaskId = bgTaskId
+            activeDownloads[bookId] = entry
+            lock.unlock()
+        } else {
+            // Cancelled before the task was stored.
+            lock.unlock()
+            downloadTask.cancel()
+            container.cancelBookDownload(bookId: bookId)
+            if bgTaskId != .invalid {
+                endBackgroundTask(bgTaskId)
+            }
+        }
     }
 
     func cancelDownload(bookId: String) {
         lock.lock()
         let active = activeDownloads.removeValue(forKey: bookId)
+        let container = self.container
         lock.unlock()
 
-        active?.task.cancel()
+        container?.cancelBookDownload(bookId: bookId)
+        active?.task?.cancel()
         if let bgTaskId = active?.backgroundTaskId, bgTaskId != .invalid {
             endBackgroundTask(bgTaskId)
         }
@@ -191,35 +240,44 @@ final class IosBookDownloadScheduler: NSObject, BookDownloadScheduler {
         lock.lock()
         let downloads = activeDownloads
         activeDownloads.removeAll()
+        let container = self.container
         lock.unlock()
 
+        container?.cancelAllBookDownloads()
         for (_, active) in downloads {
-            active.task.cancel()
+            active.task?.cancel()
             if active.backgroundTaskId != .invalid {
                 endBackgroundTask(active.backgroundTaskId)
             }
         }
     }
 
-    private func cleanupDownload(bookId: String) {
+    private func cleanupDownload(bookId: String, token: UUID) {
         lock.lock()
-        let active = activeDownloads.removeValue(forKey: bookId)
+        guard let existing = activeDownloads[bookId], existing.token == token else {
+            lock.unlock()
+            return
+        }
+        activeDownloads.removeValue(forKey: bookId)
         lock.unlock()
 
-        if let bgTaskId = active?.backgroundTaskId, bgTaskId != .invalid {
-            endBackgroundTask(bgTaskId)
+        if existing.backgroundTaskId != .invalid {
+            endBackgroundTask(existing.backgroundTaskId)
         }
     }
 
-    private func finishBackgroundTask(bookId: String) {
+    private func finishBackgroundTask(bookId: String, token: UUID) {
         lock.lock()
-        let active = activeDownloads[bookId]
-        if let active {
-            activeDownloads[bookId] = ActiveDownload(task: active.task, backgroundTaskId: .invalid)
+        guard var existing = activeDownloads[bookId], existing.token == token else {
+            lock.unlock()
+            return
         }
+        let bgTaskId = existing.backgroundTaskId
+        existing.backgroundTaskId = .invalid
+        activeDownloads[bookId] = existing
         lock.unlock()
 
-        if let bgTaskId = active?.backgroundTaskId, bgTaskId != .invalid {
+        if bgTaskId != .invalid {
             endBackgroundTask(bgTaskId)
         }
     }

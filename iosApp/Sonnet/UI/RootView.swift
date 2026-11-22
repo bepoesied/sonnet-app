@@ -38,20 +38,18 @@ struct RootView: View {
                     }
                 )
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if appStore.hasActiveBook, let activeBookId = appStore.activePlayerState.bookId {
-                        MiniPlayerBar(
-                            state: appStore.activePlayerState,
-                            onOpenPlayer: {
-                                playerDestination = PlayerDestination(
-                                    bookId: activeBookId,
-                                    isDownloaded: true
-                                )
-                            },
-                            onPlayPause: {
-                                appStore.toggleActivePlayback()
-                            }
-                        )
-                    }
+                    MiniPlayerHostView(
+                        activePlayback: appStore.activePlayback,
+                        onOpenPlayer: { activeBookId in
+                            playerDestination = PlayerDestination(
+                                bookId: activeBookId,
+                                isDownloaded: true
+                            )
+                        },
+                        onPlayPause: {
+                            appStore.toggleActivePlayback()
+                        }
+                    )
                 }
                 .sheet(item: $playerDestination) { destination in
                     PlayerView(
@@ -107,6 +105,26 @@ struct RootView: View {
             if !needsReauth {
                 showReauthSheet = false
             }
+        }
+    }
+}
+
+/// Isolated subview observing 1 Hz `ActivePlaybackStore` updates so playback ticks never
+/// invalidate `RootView` or `LibraryView`.
+private struct MiniPlayerHostView: View {
+    let activePlayback: ActivePlaybackStore
+    let onOpenPlayer: (String) -> Void
+    let onPlayPause: () -> Void
+
+    var body: some View {
+        if activePlayback.hasActiveBook, let activeBookId = activePlayback.state.bookId {
+            MiniPlayerBar(
+                state: activePlayback.state,
+                onOpenPlayer: {
+                    onOpenPlayer(activeBookId)
+                },
+                onPlayPause: onPlayPause
+            )
         }
     }
 }

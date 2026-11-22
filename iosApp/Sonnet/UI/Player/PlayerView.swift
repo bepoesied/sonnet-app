@@ -2,13 +2,12 @@ import SwiftUI
 import sharedKit
 
 struct PlayerView: View {
-    @State private var store: PlayerStore
-    @State private var showChaptersSheet = false
-    @State private var showSleepTimerSheet = false
-
     private let bookId: String
     private let isDownloaded: Bool
+    private let container: IosAppContainer
     private let onDismiss: () -> Void
+
+    @State private var store: PlayerStore?
 
     init(
         bookId: String,
@@ -18,46 +17,27 @@ struct PlayerView: View {
     ) {
         self.bookId = bookId
         self.isDownloaded = isDownloaded
+        self.container = container
         self.onDismiss = onDismiss
-        self._store = State(initialValue: PlayerStore(container: container, bookId: bookId))
     }
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
-                Group {
-                    if !isDownloaded {
-                        BookUnavailableView(
-                            message: "This book is not downloaded yet.",
-                            onBack: onDismiss
-                        )
-                    } else if store.isUnavailable {
-                        BookUnavailableView(
-                            message: store.uiState.errorMessage
-                                ?? "This book is unavailable. Try downloading it again.",
-                            onBack: onDismiss
-                        )
-                    } else {
-                        playerContent
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                if !store.isUnavailable,
-                   let errorMessage = store.uiState.errorMessage,
-                   !errorMessage.isEmpty {
-                    ErrorToastBanner(message: errorMessage) {
-                        store.clearError()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .task(id: errorMessage) {
-                        try? await Task.sleep(for: .seconds(4))
-                        if store.uiState.errorMessage == errorMessage {
-                            store.clearError()
-                        }
-                    }
+            Group {
+                if !isDownloaded {
+                    BookUnavailableView(
+                        message: "This book is not downloaded yet.",
+                        onBack: onDismiss
+                    )
+                } else if let store {
+                    PlayerScreenContent(
+                        bookId: bookId,
+                        store: store,
+                        onDismiss: onDismiss
+                    )
+                } else {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .background(Color(uiColor: .systemBackground))
@@ -72,67 +52,111 @@ struct PlayerView: View {
                     .accessibilityLabel("Minimize player")
                 }
             }
-            .task(id: bookId) {
-                if isDownloaded {
-                    store.loadBook()
-                }
+        }
+        .task(id: bookId) {
+            guard isDownloaded else { return }
+            if store?.bookId != bookId {
+                let newStore = PlayerStore(container: container, bookId: bookId)
+                store = newStore
+                newStore.loadBook()
+            } else {
+                store?.loadBook()
             }
-            .sheet(isPresented: $showChaptersSheet) {
-                ChapterSheetView(
-                    chapters: store.uiState.chapters,
-                    currentChapterId: store.uiState.currentChapterId,
-                    onSelectChapter: { chapterId in
-                        showChaptersSheet = false
-                        store.jumpToChapter(chapterId: chapterId)
-                    }
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showSleepTimerSheet) {
-                SleepTimerSheetView(
-                    currentTimer: store.uiState.sleepTimer,
-                    onSelectTimer: { timer in
-                        showSleepTimerSheet = false
-                        store.setSleepTimer(timer)
-                    }
-                )
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-            }
-            .alert(
-                "Resume from server?",
-                isPresented: Binding(
-                    get: { store.uiState.resumePrompt != nil },
-                    set: { isPresented in
-                        if !isPresented && store.uiState.resumePrompt != nil {
-                            store.keepLocalProgress()
-                        }
-                    }
-                ),
-                presenting: store.uiState.resumePrompt
-            ) { _ in
-                Button("Keep local", role: .cancel) {
-                    store.keepLocalProgress()
-                }
-                Button("Use server") {
-                    store.useRemoteProgress()
-                }
-            } message: { prompt in
-                if prompt.remoteIsCompleted {
-                    Text(
-                        "This book is marked finished on the server.\nYour local position is in \"\(prompt.localChapterTitle)\" at \(DurationFormatting.formatDuration(ms: prompt.localChapterOffsetMs))."
+        }
+    }
+}
+
+private struct PlayerScreenContent: View {
+    let bookId: String
+    let store: PlayerStore
+    let onDismiss: () -> Void
+
+    @State private var showChaptersSheet = false
+    @State private var showSleepTimerSheet = false
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Group {
+                if store.isUnavailable {
+                    BookUnavailableView(
+                        message: store.uiState.errorMessage
+                            ?? "This book is unavailable. Try downloading it again.",
+                        onBack: onDismiss
                     )
                 } else {
-                    Text(
-                        "Server has newer progress in \"\(prompt.remoteChapterTitle)\" at \(DurationFormatting.formatDuration(ms: prompt.remoteChapterOffsetMs)).\nYour local position is in \"\(prompt.localChapterTitle)\" at \(DurationFormatting.formatDuration(ms: prompt.localChapterOffsetMs))."
-                    )
+                    playerBody
                 }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if !store.isUnavailable,
+               let errorMessage = store.uiState.errorMessage,
+               !errorMessage.isEmpty {
+                ErrorToastBanner(message: errorMessage) {
+                    store.clearError()
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .task(id: errorMessage) {
+                    try? await Task.sleep(for: .seconds(4))
+                    if store.uiState.errorMessage == errorMessage {
+                        store.clearError()
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showChaptersSheet) {
+            ChapterSheetView(
+                chapters: store.uiState.chapters,
+                currentChapterId: store.uiState.currentChapterId,
+                onSelectChapter: { chapterId in
+                    showChaptersSheet = false
+                    store.jumpToChapter(chapterId: chapterId)
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showSleepTimerSheet) {
+            SleepTimerSheetView(
+                currentTimer: store.uiState.sleepTimer,
+                onSelectTimer: { timer in
+                    showSleepTimerSheet = false
+                    store.setSleepTimer(timer)
+                }
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
+        .alert(
+            "Resume from server?",
+            isPresented: Binding(
+                get: { store.uiState.resumePrompt != nil },
+                set: { _ in }
+            ),
+            presenting: store.uiState.resumePrompt
+        ) { _ in
+            Button("Keep local", role: .cancel) {
+                store.keepLocalProgress()
+            }
+            Button("Use server") {
+                store.useRemoteProgress()
+            }
+        } message: { prompt in
+            if prompt.remoteIsCompleted {
+                Text(
+                    "This book is marked finished on the server.\nYour local position is in \"\(prompt.localChapterTitle)\" at \(DurationFormatting.formatDuration(ms: prompt.localChapterOffsetMs))."
+                )
+            } else {
+                Text(
+                    "Server has newer progress in \"\(prompt.remoteChapterTitle)\" at \(DurationFormatting.formatDuration(ms: prompt.remoteChapterOffsetMs)).\nYour local position is in \"\(prompt.localChapterTitle)\" at \(DurationFormatting.formatDuration(ms: prompt.localChapterOffsetMs))."
+                )
             }
         }
     }
 
-    private var playerContent: some View {
+    private var playerBody: some View {
         let uiState = store.uiState
 
         return ScrollView {
@@ -168,6 +192,7 @@ struct PlayerView: View {
                     chapterStartPositionMs: uiState.currentChapterStartPositionMs,
                     chapterPositionMs: uiState.currentChapterPositionMs,
                     chapterDurationMs: uiState.currentChapterDurationMs,
+                    canPlay: uiState.canPlay,
                     onSeekTo: { positionMs in
                         store.seekTo(positionMs: positionMs)
                     }
@@ -284,16 +309,19 @@ private struct PlayerSeekBar: View {
     let chapterStartPositionMs: Int64
     let chapterPositionMs: Int64
     let chapterDurationMs: Int64
+    let canPlay: Bool
     let onSeekTo: (Int64) -> Void
 
     @State private var dragPositionMs: Int64?
+    @State private var pendingSeekPositionMs: Int64?
 
     private var safeDurationMs: Int64 {
         max(chapterDurationMs, 1)
     }
 
     private var displayedPositionMs: Int64 {
-        min(max(dragPositionMs ?? chapterPositionMs, 0), safeDurationMs)
+        let activePosition = dragPositionMs ?? pendingSeekPositionMs ?? chapterPositionMs
+        return min(max(activePosition, 0), safeDurationMs)
     }
 
     var body: some View {
@@ -309,11 +337,13 @@ private struct PlayerSeekBar: View {
                 in: 0...Double(safeDurationMs),
                 onEditingChanged: { isEditing in
                     if !isEditing, let target = dragPositionMs {
-                        onSeekTo(chapterStartPositionMs + target)
+                        pendingSeekPositionMs = target
                         dragPositionMs = nil
+                        onSeekTo(chapterStartPositionMs + target)
                     }
                 }
             )
+            .disabled(!canPlay)
             .tint(SonnetColors.accent)
             .accessibilityLabel("Playback position")
 
@@ -333,6 +363,17 @@ private struct PlayerSeekBar: View {
         }
         .onChange(of: chapterId) { _, _ in
             dragPositionMs = nil
+            pendingSeekPositionMs = nil
+        }
+        .onChange(of: chapterPositionMs) { _, _ in
+            if pendingSeekPositionMs != nil {
+                pendingSeekPositionMs = nil
+            }
+        }
+        .task(id: pendingSeekPositionMs) {
+            guard pendingSeekPositionMs != nil else { return }
+            try? await Task.sleep(for: .milliseconds(750))
+            pendingSeekPositionMs = nil
         }
     }
 }

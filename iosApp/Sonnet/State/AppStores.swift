@@ -3,30 +3,100 @@ import Observation
 import SwiftUI
 import sharedKit
 
+/// Non-isolated owner for Kotlin `FlowSubscription`s so `@MainActor @Observable` stores can
+/// safely cancel observations from `deinit` without touching actor-isolated getters.
+final class SubscriptionBag {
+    private let lock = NSLock()
+    private var subscriptions: [FlowSubscription] = []
+
+    func insert(_ subscription: FlowSubscription) {
+        lock.lock()
+        subscriptions.append(subscription)
+        lock.unlock()
+    }
+
+    func cancelAll() {
+        lock.lock()
+        let items = subscriptions
+        subscriptions.removeAll()
+        lock.unlock()
+
+        items.forEach { $0.cancel() }
+    }
+
+    deinit {
+        cancelAll()
+    }
+}
+
+/// Separate `@Observable` store for 1 Hz active playback state so `MiniPlayerBar` ticks never
+/// invalidate `RootView` or `LibraryView`.
+@MainActor
+@Observable
+final class ActivePlaybackStore {
+    private(set) var state: PlayerUiState = Self.emptyState()
+    private(set) var hasActiveBook: Bool = false
+
+    func update(_ newState: PlayerUiState) {
+        state = newState
+        let active = newState.bookId != nil
+        if hasActiveBook != active {
+            hasActiveBook = active
+        }
+    }
+
+    func reset() {
+        state = Self.emptyState()
+        hasActiveBook = false
+    }
+
+    static func emptyState() -> PlayerUiState {
+        PlayerUiState(
+            bookId: nil,
+            title: "",
+            author: nil,
+            coverFilePath: nil,
+            chapters: [],
+            currentChapterId: nil,
+            currentChapterTitle: "",
+            currentChapterStartPositionMs: 0,
+            currentChapterPositionMs: 0,
+            currentChapterDurationMs: 0,
+            isPlaying: false,
+            positionMs: 0,
+            durationMs: 0,
+            canPlay: false,
+            bookMissing: false,
+            isCheckingRemoteState: false,
+            sleepTimer: SleepTimerStateOff.shared,
+            resumePrompt: nil,
+            errorMessage: nil
+        )
+    }
+}
+
 /// Root `@Observable` store owning `IosAppContainer`, platform adapters, and root auth/playback state.
 @MainActor
 @Observable
 final class AppStore {
     static let shared = AppStore()
 
-    let container: IosAppContainer
-    let authPresenter: WebAuthSessionPresenter
+    @ObservationIgnored let container: IosAppContainer
+    @ObservationIgnored let authPresenter: WebAuthSessionPresenter
+    @ObservationIgnored let activePlayback = ActivePlaybackStore()
 
-    private let networkMonitorBridge: NWPathNetworkMonitor
-    private let audioDriver: AVFoundationPlaybackDriver
-    private let downloadScheduler: IosBookDownloadScheduler
-    private let backgroundSyncScheduler: IosBackgroundSyncScheduler
-    private let appViewModelHandle: AppViewModelHandle
-
-    private var appStateSubscription: FlowSubscription?
-    private var playerStateSubscription: FlowSubscription?
-    private var pendingPlayerRequestSubscription: FlowSubscription?
+    @ObservationIgnored private let networkMonitorBridge: NWPathNetworkMonitor
+    @ObservationIgnored private let audioDriver: AVFoundationPlaybackDriver
+    @ObservationIgnored private let downloadScheduler: IosBookDownloadScheduler
+    @ObservationIgnored private let backgroundSyncScheduler: IosBackgroundSyncScheduler
+    @ObservationIgnored private let appViewModelHandle: AppViewModelHandle
+    @ObservationIgnored private let rootSubscriptions = SubscriptionBag()
+    @ObservationIgnored private let playbackSubscriptions = SubscriptionBag()
+    @ObservationIgnored private var observingPlayback: Bool = false
+    @ObservationIgnored private var wasAuthenticated: Bool = false
 
     private(set) var appState: AppUiState
-    private(set) var activePlayerState: PlayerUiState
     private(set) var pendingPlayerRequest: String?
-
-    private var wasAuthenticated: Bool = false
 
     init() {
         let secureStore = KeychainSecureStore()
@@ -75,39 +145,12 @@ final class AppStore {
         self.backgroundSyncScheduler = backgroundSyncScheduler
         self.appViewModelHandle = appHandle
         self.appState = appHandle.currentState
-        self.activePlayerState = PlayerUiState(
-            bookId: nil,
-            title: "",
-            author: nil,
-            coverFilePath: nil,
-            chapters: [],
-            currentChapterId: nil,
-            currentChapterTitle: "",
-            currentChapterStartPositionMs: 0,
-            currentChapterPositionMs: 0,
-            currentChapterDurationMs: 0,
-            isPlaying: false,
-            positionMs: 0,
-            durationMs: 0,
-            canPlay: false,
-            bookMissing: false,
-            isCheckingRemoteState: false,
-            sleepTimer: SleepTimerStateOff.shared,
-            resumePrompt: nil,
-            errorMessage: nil
+
+        rootSubscriptions.insert(
+            appHandle.observeState { [weak self] newState in
+                self?.handleAppStateUpdate(newState)
+            }
         )
-
-        appStateSubscription = appHandle.observeState { [weak self] newState in
-            self?.handleAppStateUpdate(newState)
-        }
-
-        playerStateSubscription = container.observePlayerState { [weak self] newState in
-            self?.activePlayerState = newState
-        }
-
-        pendingPlayerRequestSubscription = container.observePendingPlayerRequest { [weak self] request in
-            self?.pendingPlayerRequest = request
-        }
     }
 
     var isLoading: Bool {
@@ -126,11 +169,8 @@ final class AppStore {
         readyState?.requiresReauth ?? false
     }
 
-    var hasActiveBook: Bool {
-        activePlayerState.bookId != nil
-    }
-
     func consumePendingPlayerRequest() -> String? {
+        guard observingPlayback else { return nil }
         let request = container.playbackOrchestrator.consumePendingPlayerRequest()
         pendingPlayerRequest = nil
         return request
@@ -142,6 +182,7 @@ final class AppStore {
 
     func logout() {
         downloadScheduler.cancelAll()
+        stopObservingPlayback()
         container.stopPlaybackIfInitialized()
         appViewModelHandle.logout()
     }
@@ -152,7 +193,7 @@ final class AppStore {
             container.onAppDidEnterBackground()
         case .active:
             if isAuthenticated && !requiresReauth {
-                Task { [weak container] in
+                Task { [weak container = self.container] in
                     _ = try? await container?.syncPendingProgressForBackgroundTask()
                 }
             }
@@ -180,17 +221,45 @@ final class AppStore {
             container.stopSyncCoordinatorIfInitialized()
         }
 
-        if !authenticated && wasAuthenticated {
-            downloadScheduler.cancelAll()
-            container.stopPlaybackIfInitialized()
+        if authenticated {
+            startObservingPlaybackIfNeeded()
+        } else {
+            stopObservingPlayback()
+            if wasAuthenticated {
+                downloadScheduler.cancelAll()
+                container.stopPlaybackIfInitialized()
+            }
         }
         wasAuthenticated = authenticated
     }
 
+    private func startObservingPlaybackIfNeeded() {
+        guard !observingPlayback else { return }
+        observingPlayback = true
+
+        playbackSubscriptions.insert(
+            container.observePlayerState { [weak self] newState in
+                self?.activePlayback.update(newState)
+            }
+        )
+        playbackSubscriptions.insert(
+            container.observePendingPlayerRequest { [weak self] request in
+                self?.pendingPlayerRequest = request
+            }
+        )
+    }
+
+    private func stopObservingPlayback() {
+        guard observingPlayback else { return }
+        observingPlayback = false
+        playbackSubscriptions.cancelAll()
+        pendingPlayerRequest = nil
+        activePlayback.reset()
+    }
+
     deinit {
-        appStateSubscription?.cancel()
-        playerStateSubscription?.cancel()
-        pendingPlayerRequestSubscription?.cancel()
+        rootSubscriptions.cancelAll()
+        playbackSubscriptions.cancelAll()
         appViewModelHandle.clear()
         downloadScheduler.cancelAll()
         networkMonitorBridge.stop()
@@ -202,12 +271,10 @@ final class AppStore {
 @MainActor
 @Observable
 final class LoginStore {
-    private let handle: LoginViewModelHandle
-    private let authPresenter: WebAuthSessionPresenter
-    private let onLoginCompleted: () -> Void
-
-    private var stateSubscription: FlowSubscription?
-    private var effectsSubscription: FlowSubscription?
+    @ObservationIgnored private let handle: LoginViewModelHandle
+    @ObservationIgnored private let authPresenter: WebAuthSessionPresenter
+    @ObservationIgnored private let onLoginCompleted: () -> Void
+    @ObservationIgnored private let subscriptions = SubscriptionBag()
 
     private(set) var uiState: LoginUiState
 
@@ -222,13 +289,17 @@ final class LoginStore {
         self.onLoginCompleted = onLoginCompleted
         self.uiState = handle.currentState
 
-        stateSubscription = handle.observeState { [weak self] newState in
-            self?.uiState = newState
-        }
+        subscriptions.insert(
+            handle.observeState { [weak self] newState in
+                self?.uiState = newState
+            }
+        )
 
-        effectsSubscription = handle.observeEffects { [weak self] effect in
-            self?.handleEffect(effect)
-        }
+        subscriptions.insert(
+            handle.observeEffects { [weak self] effect in
+                self?.handleEffect(effect)
+            }
+        )
     }
 
     var canSubmit: Bool {
@@ -257,8 +328,7 @@ final class LoginStore {
     }
 
     deinit {
-        stateSubscription?.cancel()
-        effectsSubscription?.cancel()
+        subscriptions.cancelAll()
         handle.clear()
     }
 }
@@ -267,8 +337,8 @@ final class LoginStore {
 @MainActor
 @Observable
 final class LibraryStore {
-    private let handle: LibraryViewModelHandle
-    private var stateSubscription: FlowSubscription?
+    @ObservationIgnored private let handle: LibraryViewModelHandle
+    @ObservationIgnored private let subscriptions = SubscriptionBag()
 
     private(set) var uiState: LibraryUiState
 
@@ -277,9 +347,11 @@ final class LibraryStore {
         self.handle = handle
         self.uiState = handle.currentState
 
-        stateSubscription = handle.observeState { [weak self] newState in
-            self?.uiState = newState
-        }
+        subscriptions.insert(
+            handle.observeState { [weak self] newState in
+                self?.uiState = newState
+            }
+        )
     }
 
     func refresh(showProgress: Bool = true) {
@@ -312,7 +384,7 @@ final class LibraryStore {
     }
 
     deinit {
-        stateSubscription?.cancel()
+        subscriptions.cancelAll()
         handle.clear()
     }
 }
@@ -321,9 +393,9 @@ final class LibraryStore {
 @MainActor
 @Observable
 final class PlayerStore {
-    let bookId: String
-    private let handle: PlayerViewModelHandle
-    private var stateSubscription: FlowSubscription?
+    @ObservationIgnored let bookId: String
+    @ObservationIgnored private let handle: PlayerViewModelHandle
+    @ObservationIgnored private let subscriptions = SubscriptionBag()
 
     private(set) var uiState: PlayerUiState
 
@@ -333,9 +405,11 @@ final class PlayerStore {
         self.handle = handle
         self.uiState = handle.currentState
 
-        stateSubscription = handle.observeState { [weak self] newState in
-            self?.uiState = newState
-        }
+        subscriptions.insert(
+            handle.observeState { [weak self] newState in
+                self?.uiState = newState
+            }
+        )
     }
 
     var isUnavailable: Bool {
@@ -384,7 +458,7 @@ final class PlayerStore {
     }
 
     deinit {
-        stateSubscription?.cancel()
+        subscriptions.cancelAll()
         handle.clear()
     }
 }

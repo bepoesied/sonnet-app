@@ -32,7 +32,7 @@
 		F00000020000000000000001 /* AVFoundationPlaybackDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVFoundationPlaybackDriver.swift; sourceTree = "<group>"; };
 		F00000030000000000000001 /* CoverImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverImageLoader.swift; sourceTree = "<group>"; };
 		F00000040000000000000001 /* CryptoKitOidcCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoKitOidcCrypto.swift; sourceTree = "<group>"; };
-		F00000050000000000000001 /* IosBackgroundTasks.swift */ = {isa = PBXBuildFile; lastKnownFileType = sourcecode.swift; path = IosBackgroundTasks.swift; sourceTree = "<group>"; };
+		F00000050000000000000001 /* IosBackgroundTasks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IosBackgroundTasks.swift; sourceTree = "<group>"; };
 		F00000060000000000000001 /* KeychainSecureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSecureStore.swift; sourceTree = "<group>"; };
 		F00000070000000000000001 /* NWPathNetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NWPathNetworkMonitor.swift; sourceTree = "<group>"; };
 		F00000080000000000000001 /* WebAuthSessionPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthSessionPresenter.swift; sourceTree = "<group>"; };
@@ -49,7 +49,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		P00000030000000000000001 /* Frameworks */ = {
+		900000030000000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -59,29 +59,29 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		G00000000000000000000001 = {
+		E00000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
-				G00000010000000000000001 /* Sonnet */,
-				G00000990000000000000001 /* Products */,
+				E00000010000000000000001 /* Sonnet */,
+				E00000990000000000000001 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		G00000010000000000000001 /* Sonnet */ = {
+		E00000010000000000000001 /* Sonnet */ = {
 			isa = PBXGroup;
 			children = (
 				F00000010000000000000001 /* SonnetApp.swift */,
-				G00000020000000000000001 /* Platform */,
-				G00000030000000000000001 /* State */,
-				G00000040000000000000001 /* Theme */,
-				G00000050000000000000001 /* UI */,
+				E00000020000000000000001 /* Platform */,
+				E00000030000000000000001 /* State */,
+				E00000040000000000000001 /* Theme */,
+				E00000050000000000000001 /* UI */,
 				F00000170000000000000001 /* Assets.xcassets */,
 				F00000180000000000000001 /* Info.plist */,
 			);
 			path = Sonnet;
 			sourceTree = "<group>";
 		};
-		G00000020000000000000001 /* Platform */ = {
+		E00000020000000000000001 /* Platform */ = {
 			isa = PBXGroup;
 			children = (
 				F00000020000000000000001 /* AVFoundationPlaybackDriver.swift */,
@@ -95,7 +95,7 @@
 			path = Platform;
 			sourceTree = "<group>";
 		};
-		G00000030000000000000001 /* State */ = {
+		E00000030000000000000001 /* State */ = {
 			isa = PBXGroup;
 			children = (
 				F00000090000000000000001 /* AppStores.swift */,
@@ -103,7 +103,7 @@
 			path = State;
 			sourceTree = "<group>";
 		};
-		G00000040000000000000001 /* Theme */ = {
+		E00000040000000000000001 /* Theme */ = {
 			isa = PBXGroup;
 			children = (
 				F00000100000000000000001 /* SonnetTheme.swift */,
@@ -111,19 +111,19 @@
 			path = Theme;
 			sourceTree = "<group>";
 		};
-		G00000050000000000000001 /* UI */ = {
+		E00000050000000000000001 /* UI */ = {
 			isa = PBXGroup;
 			children = (
 				F00000110000000000000001 /* RootView.swift */,
-				G00000060000000000000001 /* Components */,
-				G00000070000000000000001 /* Library */,
-				G00000080000000000000001 /* Login */,
-				G00000090000000000000001 /* Player */,
+				E00000060000000000000001 /* Components */,
+				E00000070000000000000001 /* Library */,
+				E00000080000000000000001 /* Login */,
+				E00000090000000000000001 /* Player */,
 			);
 			path = UI;
 			sourceTree = "<group>";
 		};
-		G00000060000000000000001 /* Components */ = {
+		E00000060000000000000001 /* Components */ = {
 			isa = PBXGroup;
 			children = (
 				F00000120000000000000001 /* BookCoverView.swift */,
@@ -131,7 +131,7 @@
 			path = Components;
 			sourceTree = "<group>";
 		};
-		G00000070000000000000001 /* Library */ = {
+		E00000070000000000000001 /* Library */ = {
 			isa = PBXGroup;
 			children = (
 				F00000130000000000000001 /* LibraryView.swift */,
@@ -139,7 +139,7 @@
 			path = Library;
 			sourceTree = "<group>";
 		};
-		G00000080000000000000001 /* Login */ = {
+		E00000080000000000000001 /* Login */ = {
 			isa = PBXGroup;
 			children = (
 				F00000140000000000000001 /* LoginView.swift */,
@@ -147,7 +147,7 @@
 			path = Login;
 			sourceTree = "<group>";
 		};
-		G00000090000000000000001 /* Player */ = {
+		E00000090000000000000001 /* Player */ = {
 			isa = PBXGroup;
 			children = (
 				F00000150000000000000001 /* MiniPlayerBar.swift */,
@@ -156,7 +156,7 @@
 			path = Player;
 			sourceTree = "<group>";
 		};
-		G00000990000000000000001 /* Products */ = {
+		E00000990000000000000001 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				A10000020000000000000001 /* Sonnet.app */,
@@ -171,10 +171,10 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = C00000020000000000000001 /* Build configuration list for PBXNativeTarget "Sonnet" */;
 			buildPhases = (
-				P00000010000000000000001 /* Compile Kotlin Framework */,
-				P00000020000000000000001 /* Sources */,
-				P00000030000000000000001 /* Frameworks */,
-				P00000040000000000000001 /* Resources */,
+				900000010000000000000001 /* Compile Kotlin Framework */,
+				900000020000000000000001 /* Sources */,
+				900000030000000000000001 /* Frameworks */,
+				900000040000000000000001 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -208,8 +208,8 @@
 				en,
 				Base,
 			);
-			mainGroup = G00000000000000000000001;
-			productRefGroup = G00000990000000000000001 /* Products */;
+			mainGroup = E00000000000000000000001;
+			productRefGroup = E00000990000000000000001 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -219,7 +219,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		P00000040000000000000001 /* Resources */ = {
+		900000040000000000000001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -230,7 +230,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		P00000010000000000000001 /* Compile Kotlin Framework */ = {
+		900000010000000000000001 /* Compile Kotlin Framework */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -252,7 +252,7 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		P00000020000000000000001 /* Sources */ = {
+		900000020000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (

@@ -1,6 +1,16 @@
 package pw.kmr.sonnet.shared.ios
 
 import io.ktor.client.engine.darwin.Darwin
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okio.FileSystem
 import pw.kmr.sonnet.shared.auth.AuthSessionManager
 import pw.kmr.sonnet.shared.auth.KeyValueSessionStore
@@ -63,6 +73,10 @@ class IosPlatformDependencies(
 class IosAppContainer(
     private val deps: IosPlatformDependencies
 ) {
+    private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val downloadJobsMutex = Mutex()
+    private val activeDownloadJobs = mutableMapOf<String, Job>()
+
     val settingsRepository: AppSettingsRepository by lazy {
         AppSettingsRepository(createAppSettingsDataStore())
     }
@@ -226,37 +240,89 @@ class IosAppContainer(
     }
 
     suspend fun syncPendingProgressForBackgroundTask(): Boolean {
-        if (authSessionManager.storedSession() == null) {
-            authSessionManager.loadStoredSession()
-        }
-        if (authSessionManager.storedSession() == null || authSessionManager.requiresLogin.value) {
+        if (!ensureAuthenticatedSessionLoaded()) {
             return true
         }
         val result = progressSyncer.syncPending()
         return result.authFailed || !result.hasTransientFailures
     }
 
+    /**
+     * Runs a cancellable Kotlin download coroutine tracked by [bookId].
+     *
+     * Swift's `Task.cancel()` does not automatically propagate into KMP ObjC-exported `suspend`
+     * bridges, so [cancelBookDownload] and [cancelAllBookDownloads] cancel the backing Kotlin [Job]
+     * directly.
+     */
     suspend fun downloadBookForBackgroundTask(bookId: String, restartInProgress: Boolean) {
-        if (authSessionManager.storedSession() == null) {
-            authSessionManager.loadStoredSession()
-        }
-        if (authSessionManager.storedSession() == null || authSessionManager.requiresLogin.value) {
+        if (!ensureAuthenticatedSessionLoaded()) {
             return
         }
-        libraryRepository.downloadBook(bookId = bookId, restartInProgress = restartInProgress)
+
+        var failure: Throwable? = null
+        val job = downloadJobsMutex.withLock {
+            val existing = activeDownloadJobs[bookId]
+            if (existing?.isActive == true) {
+                existing
+            } else {
+                downloadScope.launch {
+                    try {
+                        libraryRepository.downloadBook(
+                            bookId = bookId,
+                            restartInProgress = restartInProgress
+                        )
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (throwable: Throwable) {
+                        failure = throwable
+                    }
+                }.also { created ->
+                    activeDownloadJobs[bookId] = created
+                    created.invokeOnCompletion {
+                        downloadScope.launch {
+                            downloadJobsMutex.withLock {
+                                if (activeDownloadJobs[bookId] === created) {
+                                    activeDownloadJobs.remove(bookId)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        job.join()
+        if (job.isCancelled) {
+            throw CancellationException("Download cancelled for book $bookId")
+        }
+        failure?.let { throw it }
+    }
+
+    fun cancelBookDownload(bookId: String) {
+        downloadScope.launch {
+            val job = downloadJobsMutex.withLock { activeDownloadJobs.remove(bookId) }
+            job?.cancel()
+        }
+    }
+
+    fun cancelAllBookDownloads() {
+        downloadScope.launch {
+            val jobs = downloadJobsMutex.withLock {
+                activeDownloadJobs.values.toList().also { activeDownloadJobs.clear() }
+            }
+            jobs.forEach { it.cancel() }
+        }
     }
 
     suspend fun interruptedDownloadBookIds(): List<String> {
-        if (authSessionManager.storedSession() == null) {
-            authSessionManager.loadStoredSession()
-        }
-        if (authSessionManager.storedSession() == null || authSessionManager.requiresLogin.value) {
+        if (!ensureAuthenticatedSessionLoaded()) {
             return emptyList()
         }
         return libraryRepository.interruptedDownloadBookIds()
     }
 
     fun dispose() {
+        downloadScope.cancel()
         if (syncCoordinatorDelegate.isInitialized()) {
             syncCoordinator.dispose()
         }
@@ -272,6 +338,14 @@ class IosAppContainer(
         if (databaseDelegate.isInitialized()) {
             database.close()
         }
+    }
+
+    private suspend fun ensureAuthenticatedSessionLoaded(): Boolean {
+        if (authSessionManager.currentSession.value == null) {
+            authSessionManager.loadStoredSession()
+        }
+        return authSessionManager.currentSession.value != null &&
+            !authSessionManager.requiresLogin.value
     }
 
     private companion object {
