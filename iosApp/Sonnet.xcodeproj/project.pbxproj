@@ -1,0 +1,492 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B00000010000000000000001 /* SonnetApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000010000000000000001 /* SonnetApp.swift */; };
+		B00000020000000000000001 /* AVFoundationPlaybackDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000020000000000000001 /* AVFoundationPlaybackDriver.swift */; };
+		B00000030000000000000001 /* CoverImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000030000000000000001 /* CoverImageLoader.swift */; };
+		B00000040000000000000001 /* CryptoKitOidcCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000040000000000000001 /* CryptoKitOidcCrypto.swift */; };
+		B00000050000000000000001 /* IosBackgroundTasks.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000050000000000000001 /* IosBackgroundTasks.swift */; };
+		B00000060000000000000001 /* KeychainSecureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000060000000000000001 /* KeychainSecureStore.swift */; };
+		B00000070000000000000001 /* NWPathNetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000070000000000000001 /* NWPathNetworkMonitor.swift */; };
+		B00000080000000000000001 /* WebAuthSessionPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000080000000000000001 /* WebAuthSessionPresenter.swift */; };
+		B00000090000000000000001 /* AppStores.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000090000000000000001 /* AppStores.swift */; };
+		B00000100000000000000001 /* SonnetTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000100000000000000001 /* SonnetTheme.swift */; };
+		B00000110000000000000001 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000110000000000000001 /* RootView.swift */; };
+		B00000120000000000000001 /* BookCoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000120000000000000001 /* BookCoverView.swift */; };
+		B00000130000000000000001 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000130000000000000001 /* LibraryView.swift */; };
+		B00000140000000000000001 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000140000000000000001 /* LoginView.swift */; };
+		B00000150000000000000001 /* MiniPlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000150000000000000001 /* MiniPlayerBar.swift */; };
+		B00000160000000000000001 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000160000000000000001 /* PlayerView.swift */; };
+		B00000170000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F00000170000000000000001 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A10000020000000000000001 /* Sonnet.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sonnet.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F00000010000000000000001 /* SonnetApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonnetApp.swift; sourceTree = "<group>"; };
+		F00000020000000000000001 /* AVFoundationPlaybackDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVFoundationPlaybackDriver.swift; sourceTree = "<group>"; };
+		F00000030000000000000001 /* CoverImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverImageLoader.swift; sourceTree = "<group>"; };
+		F00000040000000000000001 /* CryptoKitOidcCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoKitOidcCrypto.swift; sourceTree = "<group>"; };
+		F00000050000000000000001 /* IosBackgroundTasks.swift */ = {isa = PBXBuildFile; lastKnownFileType = sourcecode.swift; path = IosBackgroundTasks.swift; sourceTree = "<group>"; };
+		F00000060000000000000001 /* KeychainSecureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSecureStore.swift; sourceTree = "<group>"; };
+		F00000070000000000000001 /* NWPathNetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NWPathNetworkMonitor.swift; sourceTree = "<group>"; };
+		F00000080000000000000001 /* WebAuthSessionPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthSessionPresenter.swift; sourceTree = "<group>"; };
+		F00000090000000000000001 /* AppStores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStores.swift; sourceTree = "<group>"; };
+		F00000100000000000000001 /* SonnetTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonnetTheme.swift; sourceTree = "<group>"; };
+		F00000110000000000000001 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		F00000120000000000000001 /* BookCoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCoverView.swift; sourceTree = "<group>"; };
+		F00000130000000000000001 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		F00000140000000000000001 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		F00000150000000000000001 /* MiniPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerBar.swift; sourceTree = "<group>"; };
+		F00000160000000000000001 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
+		F00000170000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F00000180000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		P00000030000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		G00000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				G00000010000000000000001 /* Sonnet */,
+				G00000990000000000000001 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		G00000010000000000000001 /* Sonnet */ = {
+			isa = PBXGroup;
+			children = (
+				F00000010000000000000001 /* SonnetApp.swift */,
+				G00000020000000000000001 /* Platform */,
+				G00000030000000000000001 /* State */,
+				G00000040000000000000001 /* Theme */,
+				G00000050000000000000001 /* UI */,
+				F00000170000000000000001 /* Assets.xcassets */,
+				F00000180000000000000001 /* Info.plist */,
+			);
+			path = Sonnet;
+			sourceTree = "<group>";
+		};
+		G00000020000000000000001 /* Platform */ = {
+			isa = PBXGroup;
+			children = (
+				F00000020000000000000001 /* AVFoundationPlaybackDriver.swift */,
+				F00000030000000000000001 /* CoverImageLoader.swift */,
+				F00000040000000000000001 /* CryptoKitOidcCrypto.swift */,
+				F00000050000000000000001 /* IosBackgroundTasks.swift */,
+				F00000060000000000000001 /* KeychainSecureStore.swift */,
+				F00000070000000000000001 /* NWPathNetworkMonitor.swift */,
+				F00000080000000000000001 /* WebAuthSessionPresenter.swift */,
+			);
+			path = Platform;
+			sourceTree = "<group>";
+		};
+		G00000030000000000000001 /* State */ = {
+			isa = PBXGroup;
+			children = (
+				F00000090000000000000001 /* AppStores.swift */,
+			);
+			path = State;
+			sourceTree = "<group>";
+		};
+		G00000040000000000000001 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				F00000100000000000000001 /* SonnetTheme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		G00000050000000000000001 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				F00000110000000000000001 /* RootView.swift */,
+				G00000060000000000000001 /* Components */,
+				G00000070000000000000001 /* Library */,
+				G00000080000000000000001 /* Login */,
+				G00000090000000000000001 /* Player */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		G00000060000000000000001 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				F00000120000000000000001 /* BookCoverView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		G00000070000000000000001 /* Library */ = {
+			isa = PBXGroup;
+			children = (
+				F00000130000000000000001 /* LibraryView.swift */,
+			);
+			path = Library;
+			sourceTree = "<group>";
+		};
+		G00000080000000000000001 /* Login */ = {
+			isa = PBXGroup;
+			children = (
+				F00000140000000000000001 /* LoginView.swift */,
+			);
+			path = Login;
+			sourceTree = "<group>";
+		};
+		G00000090000000000000001 /* Player */ = {
+			isa = PBXGroup;
+			children = (
+				F00000150000000000000001 /* MiniPlayerBar.swift */,
+				F00000160000000000000001 /* PlayerView.swift */,
+			);
+			path = Player;
+			sourceTree = "<group>";
+		};
+		G00000990000000000000001 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10000020000000000000001 /* Sonnet.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000010000000000000001 /* Sonnet */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C00000020000000000000001 /* Build configuration list for PBXNativeTarget "Sonnet" */;
+			buildPhases = (
+				P00000010000000000000001 /* Compile Kotlin Framework */,
+				P00000020000000000000001 /* Sources */,
+				P00000030000000000000001 /* Frameworks */,
+				P00000040000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Sonnet;
+			productName = Sonnet;
+			productReference = A10000020000000000000001 /* Sonnet.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A10000010000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = C00000010000000000000001 /* Build configuration list for PBXProject "Sonnet" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = G00000000000000000000001;
+			productRefGroup = G00000990000000000000001 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A10000010000000000000001 /* Sonnet */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		P00000040000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B00000170000000000000001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		P00000010000000000000001 /* Compile Kotlin Framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Compile Kotlin Framework";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		P00000020000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B00000010000000000000001 /* SonnetApp.swift in Sources */,
+				B00000020000000000000001 /* AVFoundationPlaybackDriver.swift in Sources */,
+				B00000030000000000000001 /* CoverImageLoader.swift in Sources */,
+				B00000040000000000000001 /* CryptoKitOidcCrypto.swift in Sources */,
+				B00000050000000000000001 /* IosBackgroundTasks.swift in Sources */,
+				B00000060000000000000001 /* KeychainSecureStore.swift in Sources */,
+				B00000070000000000000001 /* NWPathNetworkMonitor.swift in Sources */,
+				B00000080000000000000001 /* WebAuthSessionPresenter.swift in Sources */,
+				B00000090000000000000001 /* AppStores.swift in Sources */,
+				B00000100000000000000001 /* SonnetTheme.swift in Sources */,
+				B00000110000000000000001 /* RootView.swift in Sources */,
+				B00000120000000000000001 /* BookCoverView.swift in Sources */,
+				B00000130000000000000001 /* LibraryView.swift in Sources */,
+				B00000140000000000000001 /* LoginView.swift in Sources */,
+				B00000150000000000000001 /* MiniPlayerBar.swift in Sources */,
+				B00000160000000000000001 /* PlayerView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		D00000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		D00000020000000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		D00000030000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sonnet/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					sharedKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = pw.kmr.sonnet;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D00000040000000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sonnet/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					sharedKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = pw.kmr.sonnet;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C00000010000000000000001 /* Build configuration list for PBXProject "Sonnet" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D00000010000000000000001 /* Debug */,
+				D00000020000000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C00000020000000000000001 /* Build configuration list for PBXNativeTarget "Sonnet" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D00000030000000000000001 /* Debug */,
+				D00000040000000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A10000000000000000000001 /* Project object */;
+}
