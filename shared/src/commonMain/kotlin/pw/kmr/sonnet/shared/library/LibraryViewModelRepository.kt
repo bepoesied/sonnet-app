@@ -10,6 +10,8 @@ interface LibraryViewModelRepository {
 
     suspend fun interruptedDownloadBookIds(): List<String>
 
+    suspend fun markDownloadQueued(bookId: String) = Unit
+
     suspend fun downloadBook(bookId: String, restartInProgress: Boolean = false)
 
     suspend fun deleteDownload(bookId: String)

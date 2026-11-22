@@ -11,6 +11,11 @@ import pw.kmr.sonnet.shared.data.local.entity.DownloadedChapterEntity
 import pw.kmr.sonnet.shared.data.local.entity.LibraryItemEntity
 import pw.kmr.sonnet.shared.data.local.entity.PlaybackProgressEntity
 
+data class DownloadedBookDuration(
+    val bookId: String,
+    val totalDurationMillis: Long
+)
+
 @Dao
 interface LibraryDao : PlaybackProgressDao {
     @Query("SELECT * FROM library_items ORDER BY title COLLATE NOCASE")
@@ -27,6 +32,16 @@ interface LibraryDao : PlaybackProgressDao {
 
     @Query("SELECT * FROM playback_progress")
     fun observePlaybackProgress(): Flow<List<PlaybackProgressEntity>>
+
+    @Query(
+        """
+        SELECT bookId, SUM(CASE WHEN durationMs > 0 THEN durationMs ELSE 0 END) AS totalDurationMillis
+        FROM downloaded_chapters
+        WHERE durationMs IS NOT NULL AND durationMs > 0
+        GROUP BY bookId
+        """
+    )
+    fun observeDownloadedBookDurations(): Flow<List<DownloadedBookDuration>>
 
     @Query("SELECT * FROM playback_progress WHERE libraryItemId = :bookId")
     override suspend fun playbackProgress(bookId: String): PlaybackProgressEntity?
@@ -80,6 +95,26 @@ interface LibraryDao : PlaybackProgressDao {
 
     @Upsert
     suspend fun upsertLibraryItem(item: LibraryItemEntity)
+
+    @Query("SELECT id FROM library_items")
+    suspend fun allLibraryItemIds(): List<String>
+
+    @Query("SELECT id FROM downloaded_books")
+    suspend fun allDownloadedBookIds(): List<String>
+
+    @Query("DELETE FROM library_items WHERE id = :bookId")
+    suspend fun deleteLibraryItem(bookId: String)
+
+    @Transaction
+    suspend fun syncLibraryItems(items: List<LibraryItemEntity>) {
+        val remoteIds = items.mapTo(mutableSetOf()) { it.id }
+        val downloadedIds = allDownloadedBookIds().toSet()
+        val staleIds = allLibraryItemIds().filter { it !in remoteIds && it !in downloadedIds }
+        staleIds.forEach { deleteLibraryItem(it) }
+        if (items.isNotEmpty()) {
+            upsertLibraryItems(items)
+        }
+    }
 
     @Upsert
     suspend fun upsertDownload(download: DownloadEntity)

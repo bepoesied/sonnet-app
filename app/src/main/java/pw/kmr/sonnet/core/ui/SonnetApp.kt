@@ -235,6 +235,7 @@ private fun LibraryWithPlayer(appContainer: AppContainer, onLogout: () -> Unit) 
                 onOpenPlayer = { book -> openPlayer(PlayerDestination(book.id, book.isDownloaded)) },
                 onLogout = onLogout,
                 requiresReauth = appContainer.authSessionManager.requiresLogin,
+                downloadScheduler = appContainer.bookDownloadScheduler,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(bottom = contentPadding.calculateBottomPadding())

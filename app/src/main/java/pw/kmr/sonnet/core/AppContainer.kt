@@ -5,6 +5,7 @@ import io.ktor.client.engine.okhttp.OkHttp
 import okhttp3.OkHttpClient
 import okio.FileSystem
 import pw.kmr.sonnet.BuildConfig
+import pw.kmr.sonnet.library.AndroidBookDownloadScheduler
 import pw.kmr.sonnet.player.SonnetMediaSessionService
 import pw.kmr.sonnet.shared.auth.AppAuthPlatformProvider
 import pw.kmr.sonnet.shared.auth.AuthSessionManager
@@ -16,6 +17,7 @@ import pw.kmr.sonnet.shared.data.local.buildSonnetDatabase
 import pw.kmr.sonnet.shared.data.local.getSonnetDatabaseBuilder
 import pw.kmr.sonnet.shared.data.preferences.AppSettingsRepository
 import pw.kmr.sonnet.shared.data.preferences.createAppSettingsDataStore
+import pw.kmr.sonnet.shared.library.BookDownloadScheduler
 import pw.kmr.sonnet.shared.library.LibraryRepository
 import pw.kmr.sonnet.shared.library.libraryDownloadDirectory
 import pw.kmr.sonnet.shared.playback.AndroidPlaybackEngine
@@ -25,8 +27,10 @@ import pw.kmr.sonnet.shared.remote.AuthenticatedBooksApiClient
 import pw.kmr.sonnet.shared.remote.BooksApiClient
 import pw.kmr.sonnet.shared.remote.SonnetApiClient
 import pw.kmr.sonnet.shared.sync.AndroidNetworkMonitor
+import pw.kmr.sonnet.shared.sync.BackgroundSyncScheduler
 import pw.kmr.sonnet.shared.sync.ProgressSyncer
 import pw.kmr.sonnet.shared.sync.SharedSyncCoordinator
+import pw.kmr.sonnet.sync.AndroidBackgroundSyncScheduler
 import java.util.concurrent.TimeUnit
 
 class AppContainer(context: Context) {
@@ -52,11 +56,25 @@ class AppContainer(context: Context) {
     val authSessionManager = AuthSessionManager(sessionRepository, authApiClient)
     val booksApiClient = AuthenticatedBooksApiClient(rawBooksApiClient, authSessionManager)
 
+    val backgroundSyncScheduler: BackgroundSyncScheduler = AndroidBackgroundSyncScheduler(applicationContext)
+    val bookDownloadScheduler: BookDownloadScheduler = AndroidBookDownloadScheduler(applicationContext)
+
+    val progressSyncer = ProgressSyncer(
+        remoteDataSource = booksApiClient,
+        playbackProgressDao = database.libraryDao(),
+        backgroundSyncScheduler = backgroundSyncScheduler
+    )
+
+    private var activePlaybackOrchestrator: PlaybackOrchestrator? = null
+
     val libraryRepository = LibraryRepository(
         booksApiClient = booksApiClient,
         libraryDao = database.libraryDao(),
         booksDirectory = libraryDownloadDirectory(applicationContext),
-        fileSystem = FileSystem.SYSTEM
+        fileSystem = FileSystem.SYSTEM,
+        progressSyncer = progressSyncer,
+        onBeforeDeleteBook = { bookId -> activePlaybackOrchestrator?.stopIfLoaded(bookId) },
+        onBeforeClearLibrary = { activePlaybackOrchestrator?.stopAndResetAndWait() }
     )
 
     val platformAuthProvider: PlatformAuthProvider = AppAuthPlatformProvider(applicationContext)
@@ -67,11 +85,6 @@ class AppContainer(context: Context) {
         settingsRepository = settingsRepository,
         localLibraryCleaner = libraryRepository,
         enforcesHttps = BuildConfig.ENFORCE_HTTPS
-    )
-
-    val progressSyncer = ProgressSyncer(
-        remoteDataSource = booksApiClient,
-        playbackProgressDao = database.libraryDao()
     )
 
     val networkMonitor = AndroidNetworkMonitor(applicationContext)
@@ -87,9 +100,11 @@ class AppContainer(context: Context) {
         libraryRepository = libraryRepository,
         libraryDao = database.libraryDao(),
         progressSyncer = progressSyncer
-    )
+    ).also { activePlaybackOrchestrator = it }
 
     fun dispose() {
+        networkMonitor.dispose()
+        syncCoordinator.dispose()
         playbackOrchestrator.shutdown()
         sonnetApiClient.close()
         (platformAuthProvider as? AppAuthPlatformProvider)?.dispose()

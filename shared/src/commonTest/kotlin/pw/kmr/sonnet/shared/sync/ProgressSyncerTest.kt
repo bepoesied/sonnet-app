@@ -1,15 +1,19 @@
 package pw.kmr.sonnet.shared.sync
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
+import pw.kmr.sonnet.shared.auth.AuthRequiredException
 import pw.kmr.sonnet.shared.data.local.dao.PlaybackProgressDao
 import pw.kmr.sonnet.shared.data.local.entity.PlaybackProgressEntity
 import pw.kmr.sonnet.shared.model.RemoteProgress
+import pw.kmr.sonnet.shared.remote.ApiException
 import pw.kmr.sonnet.shared.remote.ProgressSyncRemoteDataSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -27,8 +31,11 @@ class ProgressSyncerTest {
         val remote = FakeProgressSyncRemoteDataSource()
         val syncer = ProgressSyncer(remote, dao)
 
-        syncer.syncPending()
+        val result = syncer.syncPending()
 
+        assertEquals(2, result.syncedCount)
+        assertFalse(result.hasTransientFailures)
+        assertFalse(result.authFailed)
         assertEquals(
             listOf(
                 "update:book-1:chapter-1:100",
@@ -43,18 +50,146 @@ class ProgressSyncerTest {
     }
 
     @Test
-    fun `sync pending stops after first failure and leaves later progress pending`() = runTest {
-        val first = progress(bookId = "book-1", chapterId = "chapter-1", updatedAtEpochMillis = 100L)
-        val second = progress(bookId = "book-2", chapterId = "chapter-2", updatedAtEpochMillis = 200L)
-        val dao = FakePlaybackProgressDao(pending = mutableListOf(first, second))
-        val remote = FakeProgressSyncRemoteDataSource(failBookIds = setOf("book-1"))
+    fun `permanent 404 and 422 errors clear pendingSync and do not block syncing remaining books`() = runTest {
+        val deletedBook = progress(bookId = "book-404", chapterId = "ch-1", updatedAtEpochMillis = 100L)
+        val invalidChapter = progress(bookId = "book-422", chapterId = "bad-ch", updatedAtEpochMillis = 200L)
+        val healthyBook = progress(bookId = "book-ok", chapterId = "ch-2", updatedAtEpochMillis = 300L)
+        val dao = FakePlaybackProgressDao(pending = mutableListOf(deletedBook, invalidChapter, healthyBook))
+        val remote = FakeProgressSyncRemoteDataSource(
+            errorsByBookId = mapOf(
+                "book-404" to ApiException(404, "not found"),
+                "book-422" to ApiException(422, "invalid chapter")
+            )
+        )
+        var scheduledCount = 0
+        val syncer = ProgressSyncer(remote, dao, BackgroundSyncScheduler { scheduledCount++ })
+
+        val result = syncer.syncPending()
+
+        assertEquals(1, result.syncedCount)
+        assertFalse(result.hasTransientFailures)
+        assertFalse(result.authFailed)
+        assertEquals(0, scheduledCount)
+        assertEquals(
+            listOf(
+                "update:book-404:ch-1:100",
+                "update:book-422:bad-ch:200",
+                "update:book-ok:ch-2:300"
+            ),
+            remote.operations
+        )
+        assertTrue(dao.pendingPlaybackProgress().isEmpty())
+        assertEquals(
+            listOf("book-404:100", "book-422:200", "book-ok:300"),
+            dao.synced
+        )
+    }
+
+    @Test
+    fun `transient 500 or network error keeps pendingSync true, continues remaining books, and reports retry needed`() = runTest {
+        val failingBook = progress(bookId = "book-1", chapterId = "ch-1", updatedAtEpochMillis = 100L)
+        val healthyBook = progress(bookId = "book-2", chapterId = "ch-2", updatedAtEpochMillis = 200L)
+        val dao = FakePlaybackProgressDao(pending = mutableListOf(failingBook, healthyBook))
+        val remote = FakeProgressSyncRemoteDataSource(
+            errorsByBookId = mapOf("book-1" to ApiException(500, "server error"))
+        )
+        var scheduledCount = 0
+        val syncer = ProgressSyncer(remote, dao, BackgroundSyncScheduler { scheduledCount++ })
+
+        val result = syncer.syncPending()
+
+        assertEquals(1, result.syncedCount)
+        assertTrue(result.hasTransientFailures)
+        assertFalse(result.authFailed)
+        assertEquals(1, scheduledCount)
+        assertEquals(
+            listOf("update:book-1:ch-1:100", "update:book-2:ch-2:200"),
+            remote.operations
+        )
+        assertEquals(listOf("book-2:200"), dao.synced)
+        assertEquals(listOf(failingBook), dao.pendingPlaybackProgress())
+    }
+
+    @Test
+    fun `auth failures stop pass immediately and leave pending items untouched`() = runTest {
+        val authErrors = listOf(
+            ApiException(401, "unauthorized"),
+            ApiException(403, "forbidden"),
+            AuthRequiredException("Sign in again")
+        )
+        for (error in authErrors) {
+            val first = progress(bookId = "book-1", chapterId = "ch-1", updatedAtEpochMillis = 100L)
+            val second = progress(bookId = "book-2", chapterId = "ch-2", updatedAtEpochMillis = 200L)
+            val dao = FakePlaybackProgressDao(pending = mutableListOf(first, second))
+            val remote = FakeProgressSyncRemoteDataSource(errorsByBookId = mapOf("book-1" to error))
+            var scheduledCount = 0
+            val syncer = ProgressSyncer(remote, dao, BackgroundSyncScheduler { scheduledCount++ })
+
+            val result = syncer.syncPending()
+
+            assertTrue(result.authFailed)
+            assertEquals(0, result.syncedCount)
+            assertEquals(0, scheduledCount)
+            assertEquals(listOf("update:book-1:ch-1:100"), remote.operations)
+            assertTrue(dao.synced.isEmpty())
+            assertEquals(listOf(first, second), dao.pendingPlaybackProgress())
+        }
+    }
+
+    @Test
+    fun `concurrent syncPending and syncBook does not drop progress written during in-flight sync`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val dao = FakePlaybackProgressDao(
+            pending = mutableListOf(progress(bookId = "book-1", chapterId = "chapter-1", updatedAtEpochMillis = 100L))
+        )
+        val remote = FakeProgressSyncRemoteDataSource(
+            onUpdateProgress = { _, _, _, updatedAt ->
+                if (updatedAt == 100L) {
+                    gate.await()
+                }
+            }
+        )
         val syncer = ProgressSyncer(remote, dao)
 
-        syncer.syncPending()
+        val first = async { syncer.syncPending() }
+        remote.firstOperationStarted.await()
 
-        assertEquals(listOf("update:book-1:chapter-1:100"), remote.operations)
-        assertTrue(dao.synced.isEmpty())
-        assertEquals(listOf(first, second), dao.pendingPlaybackProgress())
+        // While book-1@100 is uploading, user advances to chapter-2@200 and requests syncBook.
+        dao.upsertPlaybackProgress(
+            progress(bookId = "book-1", chapterId = "chapter-2", updatedAtEpochMillis = 200L)
+        )
+        val second = async { syncer.syncBook("book-1") }
+        gate.complete(Unit)
+        awaitAll(first, second)
+
+        assertEquals(
+            listOf(
+                "update:book-1:chapter-1:100",
+                "update:book-1:chapter-2:200"
+            ),
+            remote.operations
+        )
+        assertTrue(dao.pendingPlaybackProgress().isEmpty())
+        assertEquals(false, dao.playbackProgress("book-1")?.pendingSync)
+    }
+
+    @Test
+    fun `cancellation exception propagates from syncPending and remoteProgress`() = runTest {
+        val dao = FakePlaybackProgressDao(
+            pending = mutableListOf(progress(bookId = "book-1", chapterId = "ch-1", updatedAtEpochMillis = 100L))
+        )
+        val remote = FakeProgressSyncRemoteDataSource(
+            errorsByBookId = mapOf("book-1" to CancellationException("cancelled")),
+            progressException = CancellationException("cancelled")
+        )
+        val syncer = ProgressSyncer(remote, dao)
+
+        assertFailsWith<CancellationException> {
+            syncer.syncPending()
+        }
+        assertFailsWith<CancellationException> {
+            syncer.remoteProgress("book-1")
+        }
     }
 
     @Test
@@ -67,8 +202,10 @@ class ProgressSyncerTest {
         val remote = FakeProgressSyncRemoteDataSource()
         val syncer = ProgressSyncer(remote, dao)
 
-        syncer.syncBook("book-1")
+        val result = syncer.syncBook("book-1")
 
+        assertEquals(1, result.syncedCount)
+        assertFalse(result.hasTransientFailures)
         assertEquals(listOf("complete:book-1"), remote.operations)
         assertEquals(listOf("book-1:100"), dao.synced)
     }
@@ -83,14 +220,16 @@ class ProgressSyncerTest {
         val remote = FakeProgressSyncRemoteDataSource()
         val syncer = ProgressSyncer(remote, dao)
 
-        syncer.syncBook("book-1")
+        val result = syncer.syncBook("book-1")
 
+        assertEquals(1, result.syncedCount)
+        assertFalse(result.hasTransientFailures)
         assertEquals(listOf("incomplete:book-1"), remote.operations)
         assertEquals(listOf("book-1:100"), dao.synced)
     }
 
     @Test
-    fun `sync calls are single flight`() = runTest {
+    fun `sync calls coalesce when no new progress was written`() = runTest {
         val gate = CompletableDeferred<Unit>()
         val dao = FakePlaybackProgressDao(
             pending = mutableListOf(progress(bookId = "book-1", chapterId = "chapter-1", updatedAtEpochMillis = 100L))
@@ -185,7 +324,7 @@ private class FakePlaybackProgressDao(
 }
 
 private class FakeProgressSyncRemoteDataSource(
-    private val failBookIds: Set<String> = emptySet(),
+    private val errorsByBookId: Map<String, Exception> = emptyMap(),
     private val progressException: Exception? = null,
     private val onUpdateProgress: suspend (String, String, Long, Long) -> Unit = { _, _, _, _ -> }
 ) : ProgressSyncRemoteDataSource {
@@ -199,17 +338,17 @@ private class FakeProgressSyncRemoteDataSource(
     override suspend fun updateProgress(bookId: String, chapterId: String, offsetMs: Long, updatedAtEpochMillis: Long) {
         firstOperationStarted.complete(Unit)
         operations += "update:$bookId:$chapterId:$updatedAtEpochMillis"
-        if (bookId in failBookIds) throw IllegalStateException("sync failed")
+        errorsByBookId[bookId]?.let { throw it }
         onUpdateProgress(bookId, chapterId, offsetMs, updatedAtEpochMillis)
     }
 
     override suspend fun markComplete(bookId: String) {
         operations += "complete:$bookId"
-        if (bookId in failBookIds) throw IllegalStateException("sync failed")
+        errorsByBookId[bookId]?.let { throw it }
     }
 
     override suspend fun markIncomplete(bookId: String) {
         operations += "incomplete:$bookId"
-        if (bookId in failBookIds) throw IllegalStateException("sync failed")
+        errorsByBookId[bookId]?.let { throw it }
     }
 }

@@ -8,6 +8,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import pw.kmr.sonnet.shared.model.AuthSession
 
+class AuthRequiredException(message: String) : IllegalStateException(message)
+
 class AuthSessionManager(
     private val sessionStore: SessionStore,
     private val authRemoteDataSource: AuthRemoteDataSource
@@ -85,8 +87,8 @@ class AuthSessionManager(
     }
 
     private suspend fun validSessionOrThrow(message: String): AuthSession {
-        if (requiresLogin.value) error("Sign in again before $message.")
-        return currentSession.firstOrNull() ?: error("Sign in before $message.")
+        if (requiresLogin.value) throw AuthRequiredException("Sign in again before $message.")
+        return currentSession.firstOrNull() ?: throw AuthRequiredException("Sign in before $message.")
     }
 
     private suspend fun refreshSession(
@@ -112,7 +114,7 @@ class AuthSessionManager(
         } catch (exception: Exception) {
             if (authRemoteDataSource.isAuthFailureError(exception)) {
                 sessionStore.markRequiresLogin()
-                error("Sign in again before $notSignedInMessage.")
+                throw AuthRequiredException("Sign in again before $notSignedInMessage.")
             }
             throw exception
         }

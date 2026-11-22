@@ -24,7 +24,8 @@ import pw.kmr.sonnet.shared.model.LibraryBook
 
 class LibraryViewModel(
     private val repository: LibraryViewModelRepository,
-    private val requiresReauth: Flow<Boolean> = flowOf(false)
+    private val requiresReauth: Flow<Boolean> = flowOf(false),
+    private val downloadScheduler: BookDownloadScheduler? = null
 ) : ViewModel() {
     private val refreshState = MutableStateFlow(RefreshState())
     private val downloadJobs = mutableMapOf<String, Job>()
@@ -86,20 +87,21 @@ class LibraryViewModel(
         viewModelScope.launch {
             if (showProgress) refreshState.value = RefreshState(isRefreshing = true)
 
-            runCatching { repository.refresh() }
-                .onSuccess {
-                    if (showProgress) refreshState.value = RefreshState(isRefreshing = false)
+            try {
+                repository.refresh()
+                if (showProgress) refreshState.value = RefreshState(isRefreshing = false)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                if (showProgress) {
+                    refreshState.value = RefreshState(
+                        isRefreshing = false,
+                        lastErrorMessage = throwable.message ?: "Library refresh failed."
+                    )
                 }
-                .onFailure { throwable ->
-                    if (showProgress) {
-                        refreshState.value = RefreshState(
-                            isRefreshing = false,
-                            lastErrorMessage = throwable.message ?: "Library refresh failed."
-                        )
-                    }
-                }
-
-            refreshInProgress = false
+            } finally {
+                refreshInProgress = false
+            }
         }
     }
 
@@ -137,6 +139,23 @@ class LibraryViewModel(
     }
 
     private fun download(book: LibraryBook) {
+        val scheduler = downloadScheduler
+        if (scheduler != null) {
+            viewModelScope.launch {
+                try {
+                    repository.markDownloadQueued(book.id)
+                    scheduler.enqueueDownload(book.id, restartInProgress = false)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    refreshState.value = refreshState.value.copy(
+                        lastErrorMessage = throwable.message ?: "Unable to download ${book.title}."
+                    )
+                }
+            }
+            return
+        }
+
         viewModelScope.launch {
             downloadJobsMutex.withLock {
                 if (downloadJobs.containsKey(book.id)) return@launch
@@ -158,6 +177,23 @@ class LibraryViewModel(
     }
 
     private fun cancelOrDeleteDownload(book: LibraryBook) {
+        val scheduler = downloadScheduler
+        if (scheduler != null) {
+            viewModelScope.launch {
+                try {
+                    scheduler.cancelDownload(book.id)
+                    repository.deleteDownload(book.id)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    refreshState.value = refreshState.value.copy(
+                        lastErrorMessage = throwable.message ?: "Unable to remove ${book.title}."
+                    )
+                }
+            }
+            return
+        }
+
         viewModelScope.launch {
             val job = downloadJobsMutex.withLock { downloadJobs.remove(book.id) }
             if (job != null) {
@@ -165,16 +201,35 @@ class LibraryViewModel(
                 return@launch
             }
 
-            runCatching { repository.deleteDownload(book.id) }
-                .onFailure { throwable ->
-                    refreshState.value = refreshState.value.copy(
-                        lastErrorMessage = throwable.message ?: "Unable to remove ${book.title}."
-                    )
-                }
+            try {
+                repository.deleteDownload(book.id)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                refreshState.value = refreshState.value.copy(
+                    lastErrorMessage = throwable.message ?: "Unable to remove ${book.title}."
+                )
+            }
         }
     }
 
     private fun resumeInterruptedDownloads() {
+        val scheduler = downloadScheduler
+        if (scheduler != null) {
+            viewModelScope.launch {
+                try {
+                    repository.interruptedDownloadBookIds().forEach { bookId ->
+                        scheduler.enqueueDownload(bookId, restartInProgress = true)
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // Best-effort resume on startup.
+                }
+            }
+            return
+        }
+
         viewModelScope.launch {
             repository.interruptedDownloadBookIds().forEach { bookId ->
                 downloadJobsMutex.withLock {
@@ -200,10 +255,11 @@ class LibraryViewModel(
 
 fun libraryViewModelFactory(
     repository: LibraryViewModelRepository,
-    requiresReauth: Flow<Boolean> = flowOf(false)
+    requiresReauth: Flow<Boolean> = flowOf(false),
+    downloadScheduler: BookDownloadScheduler? = null
 ): ViewModelProvider.Factory = viewModelFactory {
     initializer {
-        LibraryViewModel(repository, requiresReauth)
+        LibraryViewModel(repository, requiresReauth, downloadScheduler)
     }
 }
 

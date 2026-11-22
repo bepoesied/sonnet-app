@@ -23,6 +23,7 @@ import pw.kmr.sonnet.shared.model.DownloadedBook
 import pw.kmr.sonnet.shared.model.DownloadedChapter
 import pw.kmr.sonnet.shared.model.RemoteProgress
 import pw.kmr.sonnet.shared.remote.ProgressSyncRemoteDataSource
+import pw.kmr.sonnet.shared.sync.BackgroundSyncScheduler
 import pw.kmr.sonnet.shared.sync.ProgressSyncer
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -367,17 +368,47 @@ class PlaybackOrchestratorTest {
         runCurrent()
     }
 
+    @Test
+    fun `stopIfLoaded stops playback only for matching book and progress writes schedule background sync`() = runTest {
+        var syncScheduledCount = 0
+        val fixture = createFixture(
+            books = mapOf(sampleBook.id to sampleBook),
+            backgroundSyncScheduler = BackgroundSyncScheduler { syncScheduledCount++ }
+        )
+
+        fixture.orchestrator.load(sampleBook.id)
+        runCurrent()
+        fixture.engine.simulateExternalPlay(positionMs = 15_000L)
+        advanceTimeBy(400L)
+        runCurrent()
+
+        assertTrue(syncScheduledCount >= 1)
+        assertTrue(fixture.engine.isPlaying())
+
+        // Unrelated book ID must not interrupt active playback.
+        fixture.orchestrator.stopIfLoaded("other-book")
+        assertTrue(fixture.engine.isPlaying())
+        assertEquals(sampleBook.id, fixture.orchestrator.state.value.bookId)
+
+        // Matching book ID stops and releases immediately before file deletion.
+        fixture.orchestrator.stopIfLoaded(sampleBook.id)
+        assertFalse(fixture.engine.isPlaying())
+        assertNull(fixture.orchestrator.state.value.bookId)
+        assertEquals(1, fixture.engine.releaseCalls)
+    }
+
     private fun TestScope.createFixture(
         books: Map<String, DownloadedBook>,
         initialProgress: Map<String, PlaybackProgressEntity> = emptyMap(),
-        onRemoteProgress: suspend (String) -> RemoteProgress? = { null }
+        onRemoteProgress: suspend (String) -> RemoteProgress? = { null },
+        backgroundSyncScheduler: BackgroundSyncScheduler = BackgroundSyncScheduler.NoOp
     ): TestFixture {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val engine = FakePlaybackEngine()
         val repo = FakePlaybackBookRepository(books)
         val dao = FakeOrchestratorProgressDao(initialProgress.toMutableMap())
         val remote = FakeOrchestratorRemoteDataSource(onRemoteProgress)
-        val syncer = ProgressSyncer(remote, dao)
+        val syncer = ProgressSyncer(remote, dao, backgroundSyncScheduler)
         val orchestrator = PlaybackOrchestrator(
             engine = engine,
             libraryRepository = repo,

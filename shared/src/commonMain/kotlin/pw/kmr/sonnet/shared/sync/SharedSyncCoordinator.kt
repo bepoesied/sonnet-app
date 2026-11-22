@@ -2,6 +2,7 @@ package pw.kmr.sonnet.shared.sync
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import pw.kmr.sonnet.shared.ioDispatcher
 
@@ -15,5 +16,9 @@ class SharedSyncCoordinator(
         networkMonitor.onNetworkAvailable {
             scope.launch { progressSyncer.syncPending() }
         }
+    }
+
+    fun dispose() {
+        scope.cancel()
     }
 }

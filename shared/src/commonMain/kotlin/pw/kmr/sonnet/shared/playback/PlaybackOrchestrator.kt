@@ -334,6 +334,16 @@ class PlaybackOrchestrator(
         }
     }
 
+    suspend fun stopIfLoaded(bookId: String) = withContext(mainDispatcher) {
+        if (loadedBook?.id == bookId || _state.value.bookId == bookId) {
+            stopAndResetInternal()
+        }
+    }
+
+    suspend fun stopAndResetAndWait() = withContext(mainDispatcher) {
+        stopAndResetInternal()
+    }
+
     fun shutdown() {
         stopAndResetInternal()
         scope.cancel()
@@ -583,8 +593,11 @@ class PlaybackOrchestrator(
                 )
                 written = true
             }
-            if (written && forceSync) {
-                progressSyncer.syncBook(snapshot.bookId)
+            if (written) {
+                progressSyncer.notifyPendingProgressWritten()
+                if (forceSync) {
+                    progressSyncer.syncBook(snapshot.bookId)
+                }
             }
         }
     }
@@ -613,6 +626,7 @@ class PlaybackOrchestrator(
                 written = true
             }
             if (written) {
+                progressSyncer.notifyPendingProgressWritten()
                 progressSyncer.syncBook(book.id)
             }
         }

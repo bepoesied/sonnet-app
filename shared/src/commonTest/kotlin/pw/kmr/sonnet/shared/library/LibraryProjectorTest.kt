@@ -185,4 +185,54 @@ class LibraryProjectorTest {
         assertTrue(remoteWins.isCompleted)
         assertTrue(localWins.isCompleted)
     }
+
+    @Test
+    fun neverOverridesPendingSyncLocalCompletionWithNewerRemoteItem() {
+        val pendingIncomplete = LibraryProjector.project(
+            items = listOf(
+                LibraryItemEntity(
+                    id = "book",
+                    title = "Book",
+                    isCompleted = true,
+                    updatedAtEpochMillis = 999L
+                )
+            ),
+            downloads = emptyList(),
+            downloadedBooks = emptyList(),
+            progress = listOf(
+                PlaybackProgressEntity(
+                    libraryItemId = "book",
+                    isCompleted = false,
+                    updatedAtEpochMillis = 10L,
+                    pendingSync = true
+                )
+            )
+        ).single()
+
+        assertFalse(pendingIncomplete.isCompleted)
+    }
+
+    @Test
+    fun populatesTotalDurationMillisFromDownloadedChaptersOrProgress() {
+        val books = LibraryProjector.project(
+            items = listOf(
+                LibraryItemEntity(id = "downloaded", title = "Downloaded", updatedAtEpochMillis = 1L),
+                LibraryItemEntity(id = "progress-only", title = "Progress Only", updatedAtEpochMillis = 1L)
+            ),
+            downloads = emptyList(),
+            downloadedBooks = emptyList(),
+            progress = listOf(
+                PlaybackProgressEntity(
+                    libraryItemId = "progress-only",
+                    positionMillis = 1_000L,
+                    durationMillis = 50_000L,
+                    updatedAtEpochMillis = 2L
+                )
+            ),
+            downloadedDurations = mapOf("downloaded" to 120_000L)
+        ).associateBy { it.id }
+
+        assertEquals(120_000L, books.getValue("downloaded").totalDurationMillis)
+        assertEquals(50_000L, books.getValue("progress-only").totalDurationMillis)
+    }
 }

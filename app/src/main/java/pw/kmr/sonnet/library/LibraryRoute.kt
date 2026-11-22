@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import pw.kmr.sonnet.core.ui.component.SwipeActionBox
 import pw.kmr.sonnet.core.ui.component.SwipeDirection
+import pw.kmr.sonnet.shared.library.BookDownloadScheduler
 import pw.kmr.sonnet.shared.library.LibraryRepository
 import pw.kmr.sonnet.shared.library.LibraryUiState
 import pw.kmr.sonnet.shared.library.LibraryViewModel
@@ -72,10 +73,11 @@ fun LibraryRoute(
     onOpenPlayer: (LibraryBook) -> Unit,
     onLogout: () -> Unit,
     requiresReauth: Flow<Boolean> = flowOf(false),
+    downloadScheduler: BookDownloadScheduler? = null,
     modifier: Modifier = Modifier
 ) {
     val viewModel: LibraryViewModel = viewModel(
-        factory = libraryViewModelFactory(repository, requiresReauth)
+        factory = libraryViewModelFactory(repository, requiresReauth, downloadScheduler)
     )
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }

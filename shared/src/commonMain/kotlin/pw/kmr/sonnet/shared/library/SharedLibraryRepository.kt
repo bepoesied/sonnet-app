@@ -17,49 +17,65 @@ import pw.kmr.sonnet.shared.model.DownloadStatus
 import pw.kmr.sonnet.shared.model.DownloadedBook
 import pw.kmr.sonnet.shared.model.DownloadedChapter
 import pw.kmr.sonnet.shared.model.LibraryBook
-import pw.kmr.sonnet.shared.remote.AuthenticatedBooksApiClient
+import pw.kmr.sonnet.shared.remote.BooksRemoteDataSource
+import pw.kmr.sonnet.shared.sync.ProgressSyncer
 import kotlin.time.Clock
 
 class SharedLibraryRepository(
-    private val booksApiClient: AuthenticatedBooksApiClient,
-    private val libraryDao: LibraryDao
+    private val booksApiClient: BooksRemoteDataSource,
+    private val libraryDao: LibraryDao,
+    private val progressSyncer: ProgressSyncer = ProgressSyncer(booksApiClient, libraryDao),
+    private val nowMillis: () -> Long = ::currentTimeMillis
 ) {
     val libraryItems: Flow<List<LibraryBook>> = combine(
         libraryDao.observeLibraryItems(),
         libraryDao.observeDownloads(),
         libraryDao.observeDownloadedBooks(),
-        libraryDao.observePlaybackProgress()
-    ) { items, downloads, downloadedBooks, progress ->
-        LibraryProjector.project(items, downloads, downloadedBooks, progress)
+        libraryDao.observePlaybackProgress(),
+        libraryDao.observeDownloadedBookDurations()
+    ) { items, downloads, downloadedBooks, progress, durations ->
+        LibraryProjector.project(
+            items = items,
+            downloads = downloads,
+            downloadedBooks = downloadedBooks,
+            progress = progress,
+            downloadedDurations = durations.associate { it.bookId to it.totalDurationMillis }
+        )
     }
 
     suspend fun refresh() {
+        // Push local pending progress/completions first so server state reflects offline actions.
+        progressSyncer.syncPending()
         val remoteBooks = booksApiClient.books()
-        libraryDao.upsertLibraryItems(remoteBooks.map { it.toEntity() })
+        val now = nowMillis()
+        libraryDao.syncLibraryItems(remoteBooks.map { it.toEntity(now) })
     }
 
     suspend fun setCompletion(book: LibraryBook, isCompleted: Boolean) {
-        val now = currentTimeMillis()
+        val now = nowMillis()
+        val resolvedDuration = book.totalDurationMillis?.takeIf { it > 0L }
+            ?: libraryDao.playbackProgress(book.id)?.durationMillis?.takeIf { it > 0L }
+            ?: libraryDao.downloadedChapters(book.id)
+                .sumOf { (it.durationMs ?: 0L).coerceAtLeast(0L) }
+                .takeIf { it > 0L }
+
         libraryDao.markBookCompletion(
             bookId = book.id,
             isCompleted = isCompleted,
-            positionMillis = if (isCompleted) book.totalDurationMillis ?: 0L else 0L,
-            durationMillis = book.totalDurationMillis,
+            positionMillis = if (isCompleted) resolvedDuration ?: 0L else 0L,
+            durationMillis = resolvedDuration,
             updatedAtEpochMillis = now,
             pendingSync = true
         )
-
-        if (isCompleted) {
-            booksApiClient.markComplete(book.id)
-        } else {
-            booksApiClient.markIncomplete(book.id)
-        }
-        libraryDao.markPlaybackProgressSynced(book.id, now)
+        progressSyncer.notifyPendingProgressWritten()
+        // Best-effort immediate sync; offline or transient failures remain queued with pendingSync = true.
+        progressSyncer.syncBook(book.id)
     }
 
     suspend fun prepareBookForPlayback(bookId: String) {
         val libraryItem = libraryDao.libraryItem(bookId)
         val localProgress = libraryDao.playbackProgress(bookId)
+        if (localProgress?.pendingSync == true) return
         if (libraryItem?.isCompleted == true && libraryItem.updatedAtEpochMillis >= (localProgress?.updatedAtEpochMillis ?: 0L)) {
             libraryDao.deletePlaybackProgress(bookId)
             libraryDao.updateDownloadedBookCompletion(bookId, false)
@@ -71,13 +87,13 @@ class SharedLibraryRepository(
         return book.toModel(libraryDao.downloadedChapters(bookId))
     }
 
-    private fun BookSummary.toEntity(): LibraryItemEntity = LibraryItemEntity(
+    private fun BookSummary.toEntity(updatedAtEpochMillis: Long): LibraryItemEntity = LibraryItemEntity(
         id = id,
         title = title,
         author = author,
         coverImageUrl = coverUrl,
         isCompleted = isCompleted,
-        updatedAtEpochMillis = currentTimeMillis()
+        updatedAtEpochMillis = updatedAtEpochMillis
     )
 
     private fun DownloadedBookEntity.toModel(chapters: List<DownloadedChapterEntity>): DownloadedBook = DownloadedBook(
@@ -102,7 +118,8 @@ object LibraryProjector {
         items: List<LibraryItemEntity>,
         downloads: List<DownloadEntity>,
         downloadedBooks: List<DownloadedBookEntity>,
-        progress: List<PlaybackProgressEntity>
+        progress: List<PlaybackProgressEntity>,
+        downloadedDurations: Map<String, Long> = emptyMap()
     ): List<LibraryBook> {
         val downloadsByBook = downloads.associateBy { it.libraryItemId }
         val downloadedByBook = downloadedBooks.associateBy { it.id }
@@ -113,6 +130,8 @@ object LibraryProjector {
             val downloadedBook = downloadedByBook[item.id]
             val bookProgress = progressByBook[item.id]
             val downloadStatus = download?.state.toDownloadStatus()
+            val totalDurationMillis = downloadedDurations[item.id]?.takeIf { it > 0L }
+                ?: bookProgress?.durationMillis?.takeIf { it > 0L }
 
             LibraryBook(
                 id = item.id,
@@ -126,6 +145,7 @@ object LibraryProjector {
                 localCoverUri = downloadedBook?.coverFilePath,
                 remoteCoverUrl = item.coverImageUrl,
                 progressPercent = bookProgress?.percentComplete(),
+                totalDurationMillis = totalDurationMillis,
                 lastListenedAtEpochMillis = bookProgress?.updatedAtEpochMillis
             )
         }
@@ -135,6 +155,9 @@ object LibraryProjector {
             .map { book ->
                 val download = downloadsByBook[book.id]
                 val bookProgress = progressByBook[book.id]
+                val totalDurationMillis = downloadedDurations[book.id]?.takeIf { it > 0L }
+                    ?: bookProgress?.durationMillis?.takeIf { it > 0L }
+
                 LibraryBook(
                     id = book.id,
                     title = book.title,
@@ -148,6 +171,7 @@ object LibraryProjector {
                     localCoverUri = book.coverFilePath,
                     remoteCoverUrl = null,
                     progressPercent = bookProgress?.percentComplete(),
+                    totalDurationMillis = totalDurationMillis,
                     lastListenedAtEpochMillis = bookProgress?.updatedAtEpochMillis
                 )
             }
@@ -216,6 +240,7 @@ private fun PlaybackProgressEntity.percentComplete(): Float? {
 
 private fun LibraryItemEntity.completionState(progress: PlaybackProgressEntity?): Boolean {
     if (progress == null) return isCompleted
+    if (progress.pendingSync) return progress.isCompleted
     return if (updatedAtEpochMillis >= progress.updatedAtEpochMillis) isCompleted else progress.isCompleted
 }
 

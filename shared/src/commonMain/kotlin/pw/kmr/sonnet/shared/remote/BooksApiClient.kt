@@ -15,6 +15,7 @@ import io.ktor.http.isSuccess
 import io.ktor.utils.io.readAvailable
 import okio.FileSystem
 import okio.Path
+import okio.Path.Companion.toPath
 import okio.buffer
 import pw.kmr.sonnet.shared.auth.AuthSessionManager
 import pw.kmr.sonnet.shared.library.FileDownloadResult
@@ -22,6 +23,14 @@ import pw.kmr.sonnet.shared.model.BookDetail
 import pw.kmr.sonnet.shared.model.BookSummary
 import pw.kmr.sonnet.shared.model.RemoteProgress
 import kotlin.time.Instant
+
+interface BooksRemoteDataSource : ProgressSyncRemoteDataSource {
+    suspend fun books(): List<BookSummary>
+
+    suspend fun book(bookId: String): BookDetail
+
+    suspend fun download(url: String, targetPath: Path, fileSystem: FileSystem): FileDownloadResult
+}
 
 class BooksApiClient(
     private val apiClient: SonnetApiClient
@@ -84,20 +93,32 @@ class BooksApiClient(
                 throw ApiException(response.status.value, response.bodyAsText())
             }
 
-            val channel = response.bodyAsChannel()
-            val sink = fileSystem.sink(targetPath).buffer()
+            val tempPath = "${targetPath}.part".toPath()
+            fileSystem.delete(tempPath, mustExist = false)
             try {
-                val buffer = ByteArray(8_192)
-                while (true) {
-                    val read = channel.readAvailable(buffer)
-                    if (read <= 0) break
-                    sink.write(buffer, 0, read)
+                val channel = response.bodyAsChannel()
+                val sink = fileSystem.sink(tempPath).buffer()
+                try {
+                    val buffer = ByteArray(8_192)
+                    while (true) {
+                        val read = channel.readAvailable(buffer)
+                        if (read < 0) break
+                        if (read > 0) {
+                            sink.write(buffer, 0, read)
+                        }
+                    }
+                    channel.closedCause?.let { throw it }
+                    sink.flush()
+                } finally {
+                    sink.close()
                 }
-            } finally {
-                sink.close()
-            }
 
-            FileDownloadResult(response.headers[HttpHeaders.ContentType])
+                fileSystem.atomicMove(tempPath, targetPath)
+                FileDownloadResult(response.headers[HttpHeaders.ContentType])
+            } catch (throwable: Throwable) {
+                runCatching { fileSystem.delete(tempPath, mustExist = false) }
+                throw throwable
+            }
         }
     }
 
@@ -117,12 +138,12 @@ class BooksApiClient(
 class AuthenticatedBooksApiClient(
     private val booksApiClient: BooksApiClient,
     private val authSessionManager: AuthSessionManager
-) : ProgressSyncRemoteDataSource {
-    suspend fun books(): List<BookSummary> = withAuth { session ->
+) : BooksRemoteDataSource {
+    override suspend fun books(): List<BookSummary> = withAuth { session ->
         booksApiClient.books(session.serverUrl, session.accessToken)
     }
 
-    suspend fun book(bookId: String): BookDetail = withAuth { session ->
+    override suspend fun book(bookId: String): BookDetail = withAuth { session ->
         booksApiClient.book(session.serverUrl, session.accessToken, bookId)
     }
 
@@ -154,7 +175,7 @@ class AuthenticatedBooksApiClient(
         booksApiClient.markIncomplete(session.serverUrl, session.accessToken, bookId)
     }
 
-    suspend fun download(url: String, targetPath: Path, fileSystem: FileSystem): FileDownloadResult =
+    override suspend fun download(url: String, targetPath: Path, fileSystem: FileSystem): FileDownloadResult =
         booksApiClient.download(url, targetPath, fileSystem)
 
     private suspend fun <T> withAuth(request: suspend (AuthenticatedSession) -> T): T =
