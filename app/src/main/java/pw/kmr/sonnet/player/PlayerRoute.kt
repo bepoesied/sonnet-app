@@ -95,7 +95,8 @@ fun PlayerRoute(
         viewModel.load()
     }
 
-    LaunchedEffect(uiState.errorMessage) {
+    LaunchedEffect(uiState.errorMessage, uiState.bookMissing) {
+        if (uiState.bookMissing) return@LaunchedEffect
         val message = uiState.errorMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(message)
         viewModel.clearError()
@@ -113,6 +114,11 @@ fun PlayerRoute(
     ) { contentPadding ->
         if (!isDownloaded) {
             NotDownloaded(contentPadding = contentPadding)
+        } else if (uiState.bookMissing) {
+            BookUnavailable(
+                message = uiState.errorMessage ?: "This book is unavailable. Try downloading it again.",
+                contentPadding = contentPadding
+            )
         } else {
             PlayerContent(
                 uiState = uiState,
@@ -146,10 +152,16 @@ private fun ResumeProgressDialog(
         title = { Text(text = "Resume from server?") },
         text = {
             Text(
-                text = "Server has newer progress in \"${prompt.remoteChapterTitle}\" " +
-                    "at ${prompt.remoteChapterOffsetMs.formatDuration()}.\n" +
-                    "Your local position is in \"${prompt.localChapterTitle}\" " +
-                    "at ${prompt.localChapterOffsetMs.formatDuration()}."
+                text = if (prompt.remoteIsCompleted) {
+                    "This book is marked finished on the server.\n" +
+                        "Your local position is in \"${prompt.localChapterTitle}\" " +
+                        "at ${prompt.localChapterOffsetMs.formatDuration()}."
+                } else {
+                    "Server has newer progress in \"${prompt.remoteChapterTitle}\" " +
+                        "at ${prompt.remoteChapterOffsetMs.formatDuration()}.\n" +
+                        "Your local position is in \"${prompt.localChapterTitle}\" " +
+                        "at ${prompt.localChapterOffsetMs.formatDuration()}."
+                }
             )
         },
         confirmButton = { TextButton(onClick = onUseRemote) { Text(text = "Use server") } },
@@ -159,16 +171,26 @@ private fun ResumeProgressDialog(
 
 @Composable
 private fun NotDownloaded(contentPadding: PaddingValues) {
+    BookUnavailable(
+        message = "This book is not downloaded yet.",
+        contentPadding = contentPadding
+    )
+}
+
+@Composable
+private fun BookUnavailable(message: String, contentPadding: PaddingValues) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(contentPadding),
+            .padding(contentPadding)
+            .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "This book is not downloaded yet.",
+            text = message,
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
         )
     }
 }

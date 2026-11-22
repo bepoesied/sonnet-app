@@ -145,6 +145,14 @@ private class FakePlaybackProgressDao(
 
     override suspend fun pendingPlaybackProgress(): List<PlaybackProgressEntity> = pending.toList()
 
+    override suspend fun upsertPlaybackProgress(progress: PlaybackProgressEntity) {
+        playbackProgressByBookId[progress.libraryItemId] = progress
+        pending.removeAll { it.libraryItemId == progress.libraryItemId }
+        if (progress.pendingSync) {
+            pending += progress
+        }
+    }
+
     override suspend fun markPlaybackProgressSynced(bookId: String, updatedAtEpochMillis: Long) {
         synced += "$bookId:$updatedAtEpochMillis"
         pending.removeAll { it.libraryItemId == bookId && it.updatedAtEpochMillis == updatedAtEpochMillis }
@@ -153,6 +161,26 @@ private class FakePlaybackProgressDao(
                 playbackProgressByBookId[bookId] = existing.copy(pendingSync = false)
             }
         }
+    }
+
+    override suspend fun markBookCompletion(
+        bookId: String,
+        isCompleted: Boolean,
+        positionMillis: Long,
+        durationMillis: Long?,
+        updatedAtEpochMillis: Long,
+        pendingSync: Boolean
+    ) {
+        upsertPlaybackProgress(
+            PlaybackProgressEntity(
+                libraryItemId = bookId,
+                positionMillis = positionMillis,
+                durationMillis = durationMillis,
+                updatedAtEpochMillis = updatedAtEpochMillis,
+                isCompleted = isCompleted,
+                pendingSync = pendingSync
+            )
+        )
     }
 }
 

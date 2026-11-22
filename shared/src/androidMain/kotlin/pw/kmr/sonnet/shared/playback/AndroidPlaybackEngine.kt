@@ -2,39 +2,60 @@ package pw.kmr.sonnet.shared.playback
 
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
-import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.FutureCallback
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import com.google.common.util.concurrent.MoreExecutors
+import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.coroutines.resume
+import kotlin.math.max
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import java.io.File
-import kotlin.math.max
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 class AndroidPlaybackEngine(
-    private val context: Context,
+    context: Context,
     private val serviceClass: Class<*>
 ) : PlaybackEngine {
     private val applicationContext = context.applicationContext
+    private val mainExecutor = ContextCompat.getMainExecutor(applicationContext)
+    private val mainDispatcher = Dispatchers.Main.immediate
+    private val connectMutex = Mutex()
     private val _connectionState = MutableStateFlow(PlaybackConnectionState.DISCONNECTED)
 
     override val connectionState: StateFlow<PlaybackConnectionState> = _connectionState.asStateFlow()
 
     private var controller: MediaController? = null
     private var controllerFuture: ListenableFuture<MediaController>? = null
-    private val listeners = mutableListOf<PlaybackEngineListener>()
+    private val listeners = CopyOnWriteArrayList<PlaybackEngineListener>()
     private var pendingPlayAfterConnect = false
+
+    private val controllerListener = object : MediaController.Listener {
+        override fun onDisconnected(controller: MediaController) {
+            if (this@AndroidPlaybackEngine.controller === controller) {
+                controller.removeListener(playerListener)
+                this@AndroidPlaybackEngine.controller = null
+                controllerFuture = null
+                pendingPlayAfterConnect = false
+                _connectionState.value = PlaybackConnectionState.DISCONNECTED
+            }
+        }
+    }
 
     private val playerListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
@@ -59,96 +80,158 @@ class AndroidPlaybackEngine(
     }
 
     override suspend fun connect() {
-        _connectionState.value = PlaybackConnectionState.CONNECTING
-        val token = SessionToken(
-            applicationContext,
-            ComponentName(applicationContext, serviceClass)
-        )
-        val future = MediaController.Builder(applicationContext, token).buildAsync()
-        controllerFuture = future
-        Futures.addCallback(
-            future,
-            object : FutureCallback<MediaController> {
-                override fun onSuccess(result: MediaController) {
-                    controller = result
-                    result.addListener(playerListener)
-                    _connectionState.value = PlaybackConnectionState.CONNECTED
-                    if (pendingPlayAfterConnect) {
-                        pendingPlayAfterConnect = false
-                        result.play()
-                    }
+        connectMutex.withLock {
+            withContext(mainDispatcher) {
+                val existing = controller
+                if (existing != null && existing.isConnected && _connectionState.value == PlaybackConnectionState.CONNECTED) {
+                    return@withContext
                 }
 
-                override fun onFailure(t: Throwable) {
-                    _connectionState.value = PlaybackConnectionState.FAILED
-                    listeners.forEach { it.onPlayerError("Failed to connect to playback service.") }
+                // Release any stale controller or pending future before creating a fresh connection.
+                releaseOnMainThread()
+
+                _connectionState.value = PlaybackConnectionState.CONNECTING
+                val token = SessionToken(
+                    applicationContext,
+                    ComponentName(applicationContext, serviceClass)
+                )
+                val future = MediaController.Builder(applicationContext, token)
+                    .setListener(controllerListener)
+                    .buildAsync()
+                controllerFuture = future
+
+                suspendCancellableCoroutine<Unit> { continuation ->
+                    continuation.invokeOnCancellation {
+                        runOnMain {
+                            if (controllerFuture === future) {
+                                MediaController.releaseFuture(future)
+                                controllerFuture = null
+                                controller = null
+                                pendingPlayAfterConnect = false
+                                if (_connectionState.value == PlaybackConnectionState.CONNECTING) {
+                                    _connectionState.value = PlaybackConnectionState.DISCONNECTED
+                                }
+                            }
+                        }
+                    }
+
+                    Futures.addCallback(
+                        future,
+                        object : FutureCallback<MediaController> {
+                            override fun onSuccess(result: MediaController) {
+                                if (controllerFuture !== future) {
+                                    // release() or a newer connect() superseded this future; prevent leaking controller.
+                                    result.release()
+                                    if (continuation.isActive) {
+                                        continuation.resume(Unit)
+                                    }
+                                    return
+                                }
+                                controller = result
+                                result.addListener(playerListener)
+                                _connectionState.value = PlaybackConnectionState.CONNECTED
+                                if (pendingPlayAfterConnect) {
+                                    pendingPlayAfterConnect = false
+                                    result.play()
+                                }
+                                if (continuation.isActive) {
+                                    continuation.resume(Unit)
+                                }
+                            }
+
+                            override fun onFailure(t: Throwable) {
+                                if (controllerFuture === future) {
+                                    controllerFuture = null
+                                    controller = null
+                                    pendingPlayAfterConnect = false
+                                    if (t !is CancellationException && !future.isCancelled) {
+                                        _connectionState.value = PlaybackConnectionState.FAILED
+                                        listeners.forEach { it.onPlayerError("Failed to connect to playback service.") }
+                                    } else if (_connectionState.value == PlaybackConnectionState.CONNECTING) {
+                                        _connectionState.value = PlaybackConnectionState.DISCONNECTED
+                                    }
+                                }
+                                if (continuation.isActive) {
+                                    continuation.resume(Unit)
+                                }
+                            }
+                        },
+                        mainExecutor
+                    )
                 }
-            },
-            MoreExecutors.directExecutor()
-        )
+            }
+        }
     }
 
     override fun release() {
-        controller?.removeListener(playerListener)
-        controller?.release()
-        controller = null
-        controllerFuture?.cancel(true)
-        controllerFuture = null
-        _connectionState.value = PlaybackConnectionState.DISCONNECTED
+        runOnMain {
+            releaseOnMainThread()
+        }
     }
 
     override fun loadMedia(items: List<MediaItemDescriptor>, startIndex: Int, startPositionMs: Long) {
-        val c = controller ?: return
-        c.setMediaItems(
-            items.map { item ->
-                MediaItem.Builder()
-                    .setUri(item.uri)
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle(item.title)
-                            .setAlbumTitle(item.albumTitle)
-                            .setArtist(item.artist)
-                            .setArtworkUri(item.artworkUri?.let { Uri.fromFile(File(it)) })
-                            .build()
-                    )
-                    .build()
-            },
-            startIndex,
-            startPositionMs
-        )
+        runOnMain {
+            val c = controller ?: return@runOnMain
+            c.setMediaItems(
+                items.map { item ->
+                    MediaItem.Builder()
+                        .setUri(item.uri)
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setTitle(item.title)
+                                .setAlbumTitle(item.albumTitle)
+                                .setArtist(item.artist)
+                                .setArtworkUri(item.artworkUri?.let { Uri.fromFile(File(it)) })
+                                .build()
+                        )
+                        .build()
+                },
+                startIndex,
+                startPositionMs
+            )
+        }
     }
 
     override fun prepare() {
-        controller?.prepare()
+        runOnMain {
+            controller?.prepare()
+        }
     }
 
     override fun play() {
-        val c = controller
-        if (c != null) {
-            ContextCompat.startForegroundService(
-                applicationContext,
-                Intent(applicationContext, serviceClass)
-            )
-            c.play()
-        } else {
-            pendingPlayAfterConnect = true
+        runOnMain {
+            val c = controller
+            if (c != null) {
+                c.play()
+            } else {
+                pendingPlayAfterConnect = true
+            }
         }
     }
 
     override fun pause() {
-        controller?.pause()
+        runOnMain {
+            pendingPlayAfterConnect = false
+            controller?.pause()
+        }
     }
 
     override fun seekBack() {
-        controller?.seekBack()
+        runOnMain {
+            controller?.seekBack()
+        }
     }
 
     override fun seekForward() {
-        controller?.seekForward()
+        runOnMain {
+            controller?.seekForward()
+        }
     }
 
     override fun seekToChapter(chapterIndex: Int, positionMs: Long) {
-        controller?.seekTo(chapterIndex, positionMs)
+        runOnMain {
+            controller?.seekTo(chapterIndex, positionMs)
+        }
     }
 
     override fun currentPositionMs(): Long {
@@ -168,10 +251,33 @@ class AndroidPlaybackEngine(
     }
 
     override fun addListener(listener: PlaybackEngineListener) {
-        listeners.add(listener)
+        listeners.addIfAbsent(listener)
     }
 
     override fun removeListener(listener: PlaybackEngineListener) {
         listeners.remove(listener)
+    }
+
+    private fun releaseOnMainThread() {
+        pendingPlayAfterConnect = false
+        val currentController = controller
+        val future = controllerFuture
+        controller = null
+        controllerFuture = null
+        currentController?.removeListener(playerListener)
+        if (future != null) {
+            MediaController.releaseFuture(future)
+        } else {
+            currentController?.release()
+        }
+        _connectionState.value = PlaybackConnectionState.DISCONNECTED
+    }
+
+    private inline fun runOnMain(crossinline block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            block()
+        } else {
+            mainExecutor.execute { block() }
+        }
     }
 }

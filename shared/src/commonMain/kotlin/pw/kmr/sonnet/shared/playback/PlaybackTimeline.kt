@@ -21,15 +21,7 @@ data class ProjectedChapter(
 )
 
 fun DownloadedBook.seekTargetFor(bookPositionMs: Long): PlaybackSeekTarget {
-    var remaining = bookPositionMs.coerceAtLeast(0L)
-    chapters.forEachIndexed { index, chapter ->
-        val duration = chapter.durationMs ?: 0L
-        if (duration <= 0L || remaining < duration) return PlaybackSeekTarget(index, remaining)
-        remaining -= duration
-    }
-    val lastIndex = chapters.lastIndex.coerceAtLeast(0)
-    val lastDuration = chapters.getOrNull(lastIndex)?.durationMs ?: 0L
-    return PlaybackSeekTarget(lastIndex, lastDuration)
+    return resolveChapterTarget(bookPositionMs) ?: PlaybackSeekTarget(0, 0L)
 }
 
 fun DownloadedBook.positionFor(chapterId: String, chapterOffsetMs: Long): Long? {
@@ -45,37 +37,25 @@ fun DownloadedBook.positionFor(chapterId: String, chapterOffsetMs: Long): Long? 
     return beforeChapter + offset
 }
 
-fun DownloadedBook.progressAt(bookPositionMs: Long): ChapterPlaybackProgress {
-    var remaining = bookPositionMs.coerceAtLeast(0L)
-    chapters.forEach { chapter ->
-        val duration = chapter.durationMs ?: 0L
-        if (duration <= 0L || remaining < duration) {
-            return ChapterPlaybackProgress(chapter.id, remaining)
-        }
-        remaining -= duration
-    }
-    val last = chapters.last()
-    return ChapterPlaybackProgress(last.id, (last.durationMs ?: 0L).coerceAtLeast(0L))
+fun DownloadedBook.progressAt(bookPositionMs: Long): ChapterPlaybackProgress? {
+    val target = resolveChapterTarget(bookPositionMs) ?: return null
+    val chapter = chapters[target.chapterIndex]
+    return ChapterPlaybackProgress(chapter.id, target.chapterPositionMs)
 }
 
 fun DownloadedBook.chapterTitleAt(bookPositionMs: Long): String {
-    var remaining = bookPositionMs.coerceAtLeast(0L)
-    chapters.forEach { chapter ->
-        val duration = chapter.durationMs ?: 0L
-        if (duration <= 0L || remaining < duration) return chapter.title
-        remaining -= duration
-    }
-    return chapters.last().title
+    val target = resolveChapterTarget(bookPositionMs) ?: return ""
+    return chapters[target.chapterIndex].title
 }
 
-fun DownloadedBook.chapterOffsetAt(bookPositionMs: Long): Long = progressAt(bookPositionMs).chapterOffsetMs
+fun DownloadedBook.chapterOffsetAt(bookPositionMs: Long): Long = progressAt(bookPositionMs)?.chapterOffsetMs ?: 0L
 
-fun DownloadedBook.totalDurationMs(): Long = chapters.sumOf { it.durationMs ?: 0L }
+fun DownloadedBook.totalDurationMs(): Long = chapters.sumOf { (it.durationMs ?: 0L).coerceAtLeast(0L) }
 
 fun DownloadedBook.chapterStartPositionMs(chapterIndex: Int): Long {
     return chapters
         .take(chapterIndex.coerceAtLeast(0))
-        .sumOf { it.durationMs ?: 0L }
+        .sumOf { (it.durationMs ?: 0L).coerceAtLeast(0L) }
 }
 
 fun DownloadedBook.bookPositionFor(chapterIndex: Int, chapterPositionMs: Long): Long {
@@ -91,6 +71,26 @@ fun DownloadedBook.projectChapters(): List<ProjectedChapter> {
             position = chapter.position,
             startPositionMs = startPosition,
             durationMs = chapter.durationMs
-        ).also { startPosition += chapter.durationMs ?: 0L }
+        ).also { startPosition += (chapter.durationMs ?: 0L).coerceAtLeast(0L) }
     }
+}
+
+private fun DownloadedBook.resolveChapterTarget(bookPositionMs: Long): PlaybackSeekTarget? {
+    if (chapters.isEmpty()) return null
+    var remaining = bookPositionMs.coerceAtLeast(0L)
+    chapters.forEachIndexed { index, chapter ->
+        val duration = (chapter.durationMs ?: 0L).coerceAtLeast(0L)
+        if (duration > 0L) {
+            if (remaining < duration) return PlaybackSeekTarget(index, remaining)
+            remaining -= duration
+        } else {
+            val hasLaterPositiveDuration = (index + 1 until chapters.size).any { (chapters[it].durationMs ?: 0L) > 0L }
+            if (!hasLaterPositiveDuration || remaining == 0L) {
+                return PlaybackSeekTarget(index, remaining)
+            }
+        }
+    }
+    val lastIndex = chapters.lastIndex
+    val lastDuration = (chapters[lastIndex].durationMs ?: 0L).coerceAtLeast(0L)
+    return PlaybackSeekTarget(lastIndex, lastDuration)
 }

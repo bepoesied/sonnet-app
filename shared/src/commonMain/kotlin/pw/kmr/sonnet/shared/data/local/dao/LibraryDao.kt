@@ -35,7 +35,7 @@ interface LibraryDao : PlaybackProgressDao {
     override suspend fun pendingPlaybackProgress(): List<PlaybackProgressEntity>
 
     @Upsert
-    suspend fun upsertPlaybackProgress(progress: PlaybackProgressEntity)
+    override suspend fun upsertPlaybackProgress(progress: PlaybackProgressEntity)
 
     @Query("UPDATE playback_progress SET pendingSync = 0 WHERE libraryItemId = :bookId AND updatedAtEpochMillis = :updatedAtEpochMillis")
     override suspend fun markPlaybackProgressSynced(bookId: String, updatedAtEpochMillis: Long)
@@ -48,6 +48,32 @@ interface LibraryDao : PlaybackProgressDao {
 
     @Query("UPDATE downloaded_books SET isCompleted = :isCompleted WHERE id = :bookId")
     suspend fun updateDownloadedBookCompletion(bookId: String, isCompleted: Boolean)
+
+    @Transaction
+    override suspend fun markBookCompletion(
+        bookId: String,
+        isCompleted: Boolean,
+        positionMillis: Long,
+        durationMillis: Long?,
+        updatedAtEpochMillis: Long,
+        pendingSync: Boolean
+    ) {
+        if (isCompleted) {
+            deletePlaybackProgress(bookId)
+        }
+        updateLibraryItemCompletion(bookId, isCompleted, updatedAtEpochMillis)
+        updateDownloadedBookCompletion(bookId, isCompleted)
+        upsertPlaybackProgress(
+            PlaybackProgressEntity(
+                libraryItemId = bookId,
+                positionMillis = positionMillis,
+                durationMillis = durationMillis,
+                updatedAtEpochMillis = updatedAtEpochMillis,
+                isCompleted = isCompleted,
+                pendingSync = pendingSync
+            )
+        )
+    }
 
     @Upsert
     suspend fun upsertLibraryItems(items: List<LibraryItemEntity>)

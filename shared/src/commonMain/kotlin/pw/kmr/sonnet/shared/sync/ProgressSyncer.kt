@@ -1,5 +1,6 @@
 package pw.kmr.sonnet.shared.sync
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import pw.kmr.sonnet.shared.data.local.dao.PlaybackProgressDao
 import pw.kmr.sonnet.shared.data.local.entity.PlaybackProgressEntity
@@ -36,6 +37,8 @@ class ProgressSyncer(
     suspend fun remoteProgress(bookId: String): RemoteProgress? {
         return try {
             remoteDataSource.progress(bookId)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
         } catch (_: Exception) {
             null
         }
@@ -60,6 +63,8 @@ class ProgressSyncer(
             }
             playbackProgressDao.markPlaybackProgressSynced(progress.libraryItemId, progress.updatedAtEpochMillis)
             true
+        } catch (cancellation: CancellationException) {
+            throw cancellation
         } catch (_: Exception) {
             false
         }

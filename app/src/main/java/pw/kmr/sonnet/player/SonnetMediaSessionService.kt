@@ -14,6 +14,7 @@ import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import pw.kmr.sonnet.MainActivity
+import pw.kmr.sonnet.SonnetApplication
 import pw.kmr.sonnet.shared.playback.SEEK_INCREMENT_MS
 
 class SonnetMediaSessionService : MediaSessionService() {
@@ -71,20 +72,30 @@ class SonnetMediaSessionService : MediaSessionService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
+    @OptIn(UnstableApi::class)
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = mediaSession?.player
-        if (player == null || (!player.playWhenReady && player.playbackState == Player.STATE_ENDED)) {
-            stopSelf()
+        if (player == null || !player.playWhenReady || player.mediaItemCount == 0 || player.playbackState == Player.STATE_ENDED) {
+            flushPlaybackProgress()
+            pauseAllPlayersAndStopSelf()
         }
     }
 
     override fun onDestroy() {
+        flushPlaybackProgress()
         mediaSession?.run {
             player.release()
             release()
         }
         mediaSession = null
         super.onDestroy()
+    }
+
+    private fun flushPlaybackProgress() {
+        (application as? SonnetApplication)
+            ?.appContainer
+            ?.playbackOrchestrator
+            ?.flushProgress(forceSync = true)
     }
 
     companion object {

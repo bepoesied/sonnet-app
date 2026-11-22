@@ -17,6 +17,7 @@ data class PlayerUiState(
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val canPlay: Boolean = false,
+    val bookMissing: Boolean = false,
     val isCheckingRemoteState: Boolean = false,
     val sleepTimer: SleepTimerState = SleepTimerState.Off,
     val resumePrompt: ProgressResumePrompt? = null,
@@ -44,7 +45,8 @@ data class ProgressResumePrompt(
     val remotePositionMs: Long,
     val remoteChapterTitle: String = "",
     val remoteChapterOffsetMs: Long = 0L,
-    val remoteUpdatedAtEpochMillis: Long
+    val remoteUpdatedAtEpochMillis: Long,
+    val remoteIsCompleted: Boolean = false
 )
 
 fun DownloadedBook.toUiChapters(): List<PlayerChapter> =

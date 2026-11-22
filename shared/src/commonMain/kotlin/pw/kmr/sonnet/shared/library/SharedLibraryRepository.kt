@@ -40,20 +40,13 @@ class SharedLibraryRepository(
 
     suspend fun setCompletion(book: LibraryBook, isCompleted: Boolean) {
         val now = currentTimeMillis()
-        if (isCompleted) {
-            libraryDao.deletePlaybackProgress(book.id)
-        }
-        libraryDao.updateLibraryItemCompletion(book.id, isCompleted, now)
-        libraryDao.updateDownloadedBookCompletion(book.id, isCompleted)
-        libraryDao.upsertPlaybackProgress(
-            PlaybackProgressEntity(
-                libraryItemId = book.id,
-                positionMillis = if (isCompleted) book.totalDurationMillis ?: 0L else 0L,
-                durationMillis = book.totalDurationMillis,
-                updatedAtEpochMillis = now,
-                isCompleted = isCompleted,
-                pendingSync = true
-            )
+        libraryDao.markBookCompletion(
+            bookId = book.id,
+            isCompleted = isCompleted,
+            positionMillis = if (isCompleted) book.totalDurationMillis ?: 0L else 0L,
+            durationMillis = book.totalDurationMillis,
+            updatedAtEpochMillis = now,
+            pendingSync = true
         )
 
         if (isCompleted) {

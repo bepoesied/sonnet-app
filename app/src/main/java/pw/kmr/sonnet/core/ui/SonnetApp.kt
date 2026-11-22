@@ -77,6 +77,7 @@ private fun AppNavHost(
 ) {
     val startKey = if (isAuthenticated) LibraryKey else LoginKey
     val backStack = rememberNavBackStack(startKey)
+    var wasAuthenticated by remember { mutableStateOf(isAuthenticated) }
 
     LaunchedEffect(isAuthenticated) {
         val targetKey = if (isAuthenticated) LibraryKey else LoginKey
@@ -84,9 +85,10 @@ private fun AppNavHost(
             backStack.clear()
             backStack.add(targetKey)
         }
-        if (!isAuthenticated) {
-            appContainer.playbackOrchestrator.shutdown()
+        if (wasAuthenticated && !isAuthenticated) {
+            appContainer.playbackOrchestrator.stopAndReset()
         }
+        wasAuthenticated = isAuthenticated
     }
 
     val provider = entryProvider {

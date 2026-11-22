@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
                     uiState = uiState,
                     appContainer = appContainer,
                     onLogout = {
-                        appContainer.playbackOrchestrator.shutdown()
+                        appContainer.playbackOrchestrator.stopAndReset()
                         appViewModel.logout()
                     },
                     modifier = Modifier.fillMaxSize()

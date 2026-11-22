@@ -91,4 +91,70 @@ class PlaybackTimelineTest {
             book.projectChapters()
         )
     }
+
+    @Test
+    fun emptyChaptersAreHandledWithoutThrowing() {
+        val emptyBook = DownloadedBook(
+            id = "empty-book",
+            title = "Empty",
+            author = null,
+            coverFilePath = null,
+            chapters = emptyList()
+        )
+
+        assertEquals(PlaybackSeekTarget(0, 0L), emptyBook.seekTargetFor(500L))
+        assertNull(emptyBook.progressAt(500L))
+        assertEquals("", emptyBook.chapterTitleAt(500L))
+        assertEquals(0L, emptyBook.chapterOffsetAt(500L))
+        assertEquals(0L, emptyBook.totalDurationMs())
+        assertEquals(emptyList(), emptyBook.projectChapters())
+    }
+
+    @Test
+    fun nonFinalChaptersWithNullOrZeroDurationKeepLaterChaptersReachable() {
+        val mixedBook = DownloadedBook(
+            id = "mixed-book",
+            title = "Mixed",
+            author = "Author",
+            coverFilePath = null,
+            chapters = listOf(
+                DownloadedChapter("ch-1", "Intro", 1, "/tmp/1.mp3", durationMs = null),
+                DownloadedChapter("ch-2", "Interlude", 2, "/tmp/2.mp3", durationMs = 0L),
+                DownloadedChapter("ch-3", "Main", 3, "/tmp/3.mp3", durationMs = 2_000L),
+                DownloadedChapter("ch-4", "Outro", 4, "/tmp/4.mp3", durationMs = 3_000L)
+            )
+        )
+
+        assertEquals(PlaybackSeekTarget(0, 0L), mixedBook.seekTargetFor(0L))
+        assertEquals(PlaybackSeekTarget(2, 500L), mixedBook.seekTargetFor(500L))
+        assertEquals(PlaybackSeekTarget(3, 1_000L), mixedBook.seekTargetFor(3_000L))
+        assertEquals(PlaybackSeekTarget(3, 3_000L), mixedBook.seekTargetFor(9_000L))
+
+        assertEquals(ChapterPlaybackProgress("ch-1", 0L), mixedBook.progressAt(0L))
+        assertEquals(ChapterPlaybackProgress("ch-3", 500L), mixedBook.progressAt(500L))
+        assertEquals(ChapterPlaybackProgress("ch-4", 1_000L), mixedBook.progressAt(3_000L))
+        assertEquals("Main", mixedBook.chapterTitleAt(500L))
+        assertEquals("Outro", mixedBook.chapterTitleAt(3_000L))
+        assertEquals(5_000L, mixedBook.totalDurationMs())
+    }
+
+    @Test
+    fun allUnknownDurationsDefaultToFirstChapterAndClampsNegativeDurations() {
+        val unknownBook = DownloadedBook(
+            id = "unknown-book",
+            title = "Unknown",
+            author = null,
+            coverFilePath = null,
+            chapters = listOf(
+                DownloadedChapter("ch-1", "First", 1, "/tmp/1.mp3", durationMs = null),
+                DownloadedChapter("ch-2", "Second", 2, "/tmp/2.mp3", durationMs = -100L)
+            )
+        )
+
+        assertEquals(0L, unknownBook.totalDurationMs())
+        assertEquals(PlaybackSeekTarget(0, 0L), unknownBook.seekTargetFor(0L))
+        assertEquals(PlaybackSeekTarget(0, 750L), unknownBook.seekTargetFor(750L))
+        assertEquals(ChapterPlaybackProgress("ch-1", 750L), unknownBook.progressAt(750L))
+        assertEquals("First", unknownBook.chapterTitleAt(750L))
+    }
 }

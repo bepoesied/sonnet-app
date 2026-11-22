@@ -90,7 +90,7 @@ internal fun MiniPlayer(
                 }
                 IconButton(
                     onClick = onPlayPause,
-                    enabled = enabled && uiState.canPlay && !uiState.isCheckingRemoteState
+                    enabled = enabled && uiState.canPlay
                 ) {
                     Icon(
                         imageVector = if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,

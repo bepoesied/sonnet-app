@@ -11,6 +11,7 @@ import pw.kmr.sonnet.shared.data.local.dao.LibraryDao
 import pw.kmr.sonnet.shared.data.local.entity.DownloadEntity
 import pw.kmr.sonnet.shared.model.BookDetail
 import pw.kmr.sonnet.shared.model.LibraryBook
+import pw.kmr.sonnet.shared.playback.PlaybackBookRepository
 import pw.kmr.sonnet.shared.remote.AuthenticatedBooksApiClient
 
 class LibraryRepository(
@@ -18,7 +19,7 @@ class LibraryRepository(
     private val libraryDao: LibraryDao,
     private val booksDirectory: Path,
     private val fileSystem: FileSystem
-) : LibraryViewModelRepository, LocalLibraryCleaner {
+) : LibraryViewModelRepository, LocalLibraryCleaner, PlaybackBookRepository {
 
     init {
         require(booksDirectory.toString().let { !it.contains("..") && !it.contains("~") }) {
@@ -153,11 +154,11 @@ class LibraryRepository(
         sharedRepository.setCompletion(book, isCompleted)
     }
 
-    suspend fun prepareBookForPlayback(bookId: String) {
+    override suspend fun prepareBookForPlayback(bookId: String) {
         sharedRepository.prepareBookForPlayback(bookId)
     }
 
-    suspend fun downloadedBook(bookId: String) = sharedRepository.downloadedBook(bookId)
+    override suspend fun downloadedBook(bookId: String) = sharedRepository.downloadedBook(bookId)
 
     override suspend fun clearLocalLibrary() {
         fileSystem.deleteRecursively(booksDirectory, mustExist = false)
