@@ -3,7 +3,6 @@ package pw.kmr.sonnet.shared.auth
 import io.ktor.http.Url
 import kotlinx.coroutines.CancellationException
 import pw.kmr.sonnet.shared.core.AppViewModelRepository
-import pw.kmr.sonnet.shared.data.preferences.AppSettingsRepository
 import pw.kmr.sonnet.shared.library.LocalLibraryCleaner
 import pw.kmr.sonnet.shared.model.AuthSession
 import pw.kmr.sonnet.shared.remote.AuthApiClient
@@ -11,7 +10,6 @@ import pw.kmr.sonnet.shared.remote.AuthApiClient
 class LoginRepository(
     private val authApiClient: AuthApiClient,
     private val authSessionManager: AuthSessionManager,
-    private val settingsRepository: AppSettingsRepository,
     private val localLibraryCleaner: LocalLibraryCleaner,
     private val enforcesHttps: Boolean
 ) : AppViewModelRepository {
@@ -40,7 +38,6 @@ class LoginRepository(
 
     suspend fun completeLogin(serverUrl: String, idToken: String) {
         val login = authApiClient.oidcLogin(serverUrl, idToken)
-        settingsRepository.setServerUrl(login.serverUrl)
         authSessionManager.saveSession(
             AuthSession(
                 serverUrl = login.serverUrl,

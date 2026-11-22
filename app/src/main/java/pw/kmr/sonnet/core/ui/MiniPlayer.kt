@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import pw.kmr.sonnet.R
 import pw.kmr.sonnet.core.ui.component.BookCover
 import pw.kmr.sonnet.shared.playback.PlaybackOrchestrator
 import pw.kmr.sonnet.shared.playback.PlayerUiState
@@ -68,7 +70,7 @@ internal fun MiniPlayerHost(
             .distinctUntilChanged()
     }
     val metadata by metadataFlow.collectAsStateWithLifecycle(
-        initialValue = playbackOrchestrator.state.value.toMiniPlayerMetadata()
+        initialValue = PlayerUiState().toMiniPlayerMetadata()
     )
     val bookId = metadata.bookId ?: return
 
@@ -94,10 +96,7 @@ private fun MiniPlayerProgress(stateFlow: StateFlow<PlayerUiState>) {
             }
             .distinctUntilChanged()
     }
-    val progress by progressFlow.collectAsStateWithLifecycle(
-        initialValue = (stateFlow.value.currentChapterPositionMs.toFloat() /
-            stateFlow.value.currentChapterDurationMs.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
-    )
+    val progress by progressFlow.collectAsStateWithLifecycle(initialValue = 0f)
     LinearProgressIndicator(
         progress = { progress },
         modifier = Modifier.fillMaxWidth()
@@ -165,14 +164,16 @@ private fun MiniPlayerContent(
                 Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = metadata.title.ifBlank { "Loading book" },
+                        text = metadata.title.ifBlank { stringResource(R.string.player_loading_book) },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = metadata.currentChapterTitle.ifBlank { metadata.author ?: "Preparing chapters" },
+                        text = metadata.currentChapterTitle.ifBlank {
+                            metadata.author ?: stringResource(R.string.player_preparing_chapters)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -185,7 +186,9 @@ private fun MiniPlayerContent(
                 ) {
                     Icon(
                         imageVector = if (metadata.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (metadata.isPlaying) "Pause" else "Play"
+                        contentDescription = stringResource(
+                            if (metadata.isPlaying) R.string.player_pause_cd else R.string.player_play_cd
+                        )
                     )
                 }
             }

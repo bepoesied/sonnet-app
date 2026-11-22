@@ -9,9 +9,11 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -19,6 +21,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import pw.kmr.sonnet.shared.data.local.dao.PlaybackProgressDao
 import pw.kmr.sonnet.shared.data.local.entity.PlaybackProgressEntity
+import pw.kmr.sonnet.shared.model.AppSettings
 import pw.kmr.sonnet.shared.model.DownloadedBook
 import pw.kmr.sonnet.shared.model.DownloadedChapter
 import pw.kmr.sonnet.shared.model.RemoteProgress
@@ -397,11 +400,41 @@ class PlaybackOrchestratorTest {
         assertEquals(1, fixture.engine.releaseCalls)
     }
 
+    @Test
+    fun `periodic progress sync honors playbackSyncCadenceSeconds from settings`() = runTest {
+        val settingsFlow = MutableStateFlow(AppSettings(playbackSyncCadenceSeconds = 10L))
+        val fixture = createFixture(
+            books = mapOf(sampleBook.id to sampleBook),
+            settings = settingsFlow
+        )
+
+        fixture.orchestrator.load(sampleBook.id)
+        runCurrent()
+        fixture.orchestrator.playPause()
+        runCurrent()
+
+        // After 6s: periodic local save at 5s (+300ms debounce) has written pending progress,
+        // but the 10s sync cadence has not elapsed yet.
+        advanceTimeBy(6_000L)
+        runCurrent()
+        assertNotNull(fixture.dao.playbackProgress(sampleBook.id))
+        assertTrue(fixture.remote.updateCalls.isEmpty())
+
+        // Advancing past 10s triggers periodic sync using the configured cadence.
+        advanceTimeBy(4_000L)
+        runCurrent()
+        assertEquals(1, fixture.remote.updateCalls.size)
+
+        fixture.orchestrator.stopAndReset()
+        runCurrent()
+    }
+
     private fun TestScope.createFixture(
         books: Map<String, DownloadedBook>,
         initialProgress: Map<String, PlaybackProgressEntity> = emptyMap(),
         onRemoteProgress: suspend (String) -> RemoteProgress? = { null },
-        backgroundSyncScheduler: BackgroundSyncScheduler = BackgroundSyncScheduler.NoOp
+        backgroundSyncScheduler: BackgroundSyncScheduler = BackgroundSyncScheduler.NoOp,
+        settings: Flow<AppSettings> = flowOf(AppSettings())
     ): TestFixture {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val engine = FakePlaybackEngine()
@@ -414,6 +447,7 @@ class PlaybackOrchestratorTest {
             libraryRepository = repo,
             libraryDao = dao,
             progressSyncer = syncer,
+            settings = settings,
             mainDispatcher = dispatcher,
             workDispatcher = dispatcher,
             nowMillis = { 10_000L + testScheduler.currentTime },

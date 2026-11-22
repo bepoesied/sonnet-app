@@ -185,9 +185,7 @@ private fun LibraryWithPlayer(
             .map { it.bookId != null }
             .distinctUntilChanged()
     }
-    val hasActiveBook by hasActiveBookFlow.collectAsStateWithLifecycle(
-        initialValue = appContainer.playbackOrchestrator.state.value.bookId != null
-    )
+    val hasActiveBook by hasActiveBookFlow.collectAsStateWithLifecycle(initialValue = false)
 
     var playerDestination by rememberSaveable(stateSaver = playerDestinationSaver) {
         mutableStateOf<PlayerDestination?>(null)

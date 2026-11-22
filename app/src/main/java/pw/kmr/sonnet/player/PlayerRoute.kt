@@ -60,6 +60,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +74,7 @@ import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToLong
+import pw.kmr.sonnet.R
 import pw.kmr.sonnet.core.ui.component.BookCover
 import pw.kmr.sonnet.shared.playback.PlaybackOrchestrator
 import pw.kmr.sonnet.shared.playback.PlayerChapter
@@ -154,12 +157,12 @@ internal fun PlayerScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = "Player") },
+                title = { Text(text = stringResource(R.string.player_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.Filled.KeyboardArrowDown,
-                            contentDescription = "Minimize player"
+                            contentDescription = stringResource(R.string.player_minimize_cd)
                         )
                     }
                 }
@@ -174,7 +177,7 @@ internal fun PlayerScreen(
             )
         } else if (isUnavailable) {
             BookUnavailable(
-                message = uiState.errorMessage ?: "This book is unavailable. Try downloading it again.",
+                message = uiState.errorMessage ?: stringResource(R.string.player_book_unavailable_fallback),
                 onBack = onBack,
                 contentPadding = contentPadding
             )
@@ -205,23 +208,28 @@ private fun ResumeProgressDialog(
 ) {
     AlertDialog(
         onDismissRequest = onKeepLocal,
-        title = { Text(text = "Resume from server?") },
+        title = { Text(text = stringResource(R.string.player_resume_dialog_title)) },
         text = {
             Text(
                 text = if (prompt.remoteIsCompleted) {
-                    "This book is marked finished on the server.\n" +
-                        "Your local position is in \"${prompt.localChapterTitle}\" " +
-                        "at ${prompt.localChapterOffsetMs.formatDuration()}."
+                    stringResource(
+                        R.string.player_resume_dialog_completed_message,
+                        prompt.localChapterTitle,
+                        prompt.localChapterOffsetMs.formatDuration()
+                    )
                 } else {
-                    "Server has newer progress in \"${prompt.remoteChapterTitle}\" " +
-                        "at ${prompt.remoteChapterOffsetMs.formatDuration()}.\n" +
-                        "Your local position is in \"${prompt.localChapterTitle}\" " +
-                        "at ${prompt.localChapterOffsetMs.formatDuration()}."
+                    stringResource(
+                        R.string.player_resume_dialog_progress_message,
+                        prompt.remoteChapterTitle,
+                        prompt.remoteChapterOffsetMs.formatDuration(),
+                        prompt.localChapterTitle,
+                        prompt.localChapterOffsetMs.formatDuration()
+                    )
                 }
             )
         },
-        confirmButton = { TextButton(onClick = onUseRemote) { Text(text = "Use server") } },
-        dismissButton = { TextButton(onClick = onKeepLocal) { Text(text = "Keep local") } }
+        confirmButton = { TextButton(onClick = onUseRemote) { Text(text = stringResource(R.string.player_resume_use_server)) } },
+        dismissButton = { TextButton(onClick = onKeepLocal) { Text(text = stringResource(R.string.player_resume_keep_local)) } }
     )
 }
 
@@ -231,7 +239,7 @@ private fun NotDownloaded(
     contentPadding: PaddingValues
 ) {
     BookUnavailable(
-        message = "This book is not downloaded yet.",
+        message = stringResource(R.string.player_not_downloaded),
         onBack = onBack,
         contentPadding = contentPadding
     )
@@ -267,7 +275,7 @@ private fun BookUnavailable(
         )
         Spacer(modifier = Modifier.height(20.dp))
         FilledTonalButton(onClick = onBack) {
-            Text(text = "Back to library")
+            Text(text = stringResource(R.string.player_back_to_library))
         }
     }
 }
@@ -343,7 +351,7 @@ private fun PlayerContent(
         )
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = uiState.title.ifBlank { "Loading book" },
+            text = uiState.title.ifBlank { stringResource(R.string.player_loading_book) },
             style = MaterialTheme.typography.headlineSmall,
             textAlign = TextAlign.Center,
             maxLines = 2,
@@ -353,7 +361,7 @@ private fun PlayerContent(
         Text(
             text = listOfNotNull(uiState.author, uiState.currentChapterTitle.takeIf { it.isNotBlank() })
                 .joinToString(" • ")
-                .ifBlank { "Preparing chapters" },
+                .ifBlank { stringResource(R.string.player_preparing_chapters) },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -380,7 +388,7 @@ private fun PlayerContent(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Replay10,
-                    contentDescription = "Seek back 10 seconds",
+                    contentDescription = stringResource(R.string.player_seek_back_cd),
                     modifier = Modifier.size(36.dp)
                 )
             }
@@ -391,7 +399,9 @@ private fun PlayerContent(
             ) {
                 Icon(
                     imageVector = if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (uiState.isPlaying) "Pause" else "Play",
+                    contentDescription = stringResource(
+                        if (uiState.isPlaying) R.string.player_pause_cd else R.string.player_play_cd
+                    ),
                     modifier = Modifier.size(48.dp)
                 )
             }
@@ -402,7 +412,7 @@ private fun PlayerContent(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Forward10,
-                    contentDescription = "Seek forward 10 seconds",
+                    contentDescription = stringResource(R.string.player_seek_forward_cd),
                     modifier = Modifier.size(36.dp)
                 )
             }
@@ -412,6 +422,7 @@ private fun PlayerContent(
             horizontalArrangement = Arrangement.spacedBy(34.dp),
             verticalAlignment = Alignment.Top
         ) {
+            val chaptersLabel = stringResource(R.string.player_chapters)
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 IconButton(
                     onClick = { showChapters = true },
@@ -420,17 +431,18 @@ private fun PlayerContent(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.List,
-                        contentDescription = "Chapters",
+                        contentDescription = chaptersLabel,
                         modifier = Modifier.size(30.dp)
                     )
                 }
                 Text(
-                    text = "Chapters",
+                    text = chaptersLabel,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             val sleepTimerActive = uiState.sleepTimer !is SleepTimerState.Off
+            val sleepTimerLabel = uiState.sleepTimer.localizedLabel()
             val sleepTint = if (sleepTimerActive) {
                 MaterialTheme.colorScheme.primary
             } else {
@@ -443,13 +455,13 @@ private fun PlayerContent(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Timer,
-                        contentDescription = uiState.sleepTimer.formatLabel(),
+                        contentDescription = sleepTimerLabel,
                         tint = if (sleepTimerActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(30.dp)
                     )
                 }
                 Text(
-                    text = if (sleepTimerActive) uiState.sleepTimer.formatLabel() else "Sleep",
+                    text = if (sleepTimerActive) sleepTimerLabel else stringResource(R.string.player_sleep),
                     style = MaterialTheme.typography.labelMedium,
                     color = sleepTint
                 )
@@ -484,6 +496,8 @@ internal fun PlayerSeekBar(
         sliderState.value = displayedPositionMs.toFloat()
     }
 
+    val playbackPositionDescription = stringResource(R.string.player_playback_position_cd)
+
     Column(modifier = modifier.fillMaxWidth()) {
         Slider(
             state = sliderState,
@@ -499,7 +513,7 @@ internal fun PlayerSeekBar(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .semantics { contentDescription = "Playback position" }
+                .semantics { contentDescription = playbackPositionDescription }
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -534,7 +548,7 @@ private fun ChapterSheet(
         sheetState = sheetState
     ) {
         Text(
-            text = "Chapters",
+            text = stringResource(R.string.player_chapters),
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
         )
@@ -579,7 +593,7 @@ private fun ChapterSheet(
                     if (selected) {
                         Icon(
                             imageVector = Icons.Filled.Check,
-                            contentDescription = "Current chapter",
+                            contentDescription = stringResource(R.string.player_current_chapter_cd),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -601,11 +615,20 @@ private fun SleepTimerSheet(
 ) {
     val sheetState = rememberModalBottomSheetState()
     val presetOptions = listOf(
-        SleepTimerOption("Off", SleepTimerState.Off),
-        SleepTimerOption("End of chapter", SleepTimerState.ChapterEnd),
-        SleepTimerOption(formatSleepTimerPreset(15L), SleepTimerState.Countdown(15 * 60_000L)),
-        SleepTimerOption(formatSleepTimerPreset(30L), SleepTimerState.Countdown(30 * 60_000L)),
-        SleepTimerOption(formatSleepTimerPreset(60L), SleepTimerState.Countdown(60 * 60_000L))
+        SleepTimerOption(stringResource(R.string.player_sleep_timer_off), SleepTimerState.Off),
+        SleepTimerOption(stringResource(R.string.player_sleep_timer_end_of_chapter), SleepTimerState.ChapterEnd),
+        SleepTimerOption(
+            pluralStringResource(R.plurals.player_sleep_timer_minutes, 15, 15),
+            SleepTimerState.Countdown(15 * 60_000L)
+        ),
+        SleepTimerOption(
+            pluralStringResource(R.plurals.player_sleep_timer_minutes, 30, 30),
+            SleepTimerState.Countdown(30 * 60_000L)
+        ),
+        SleepTimerOption(
+            pluralStringResource(R.plurals.player_sleep_timer_minutes, 60, 60),
+            SleepTimerState.Countdown(60 * 60_000L)
+        )
     )
 
     ModalBottomSheet(
@@ -618,7 +641,7 @@ private fun SleepTimerSheet(
                 .padding(bottom = 24.dp)
         ) {
             Text(
-                text = "Sleep timer",
+                text = stringResource(R.string.player_sleep_timer_title),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
             )
@@ -641,7 +664,10 @@ private fun SleepTimerSheet(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "Active: ${currentTimer.formatLabel()} remaining",
+                            text = stringResource(
+                                R.string.player_sleep_timer_active_remaining,
+                                currentTimer.localizedLabel()
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -649,7 +675,7 @@ private fun SleepTimerSheet(
                         )
                         Icon(
                             imageVector = Icons.Filled.Check,
-                            contentDescription = "Active sleep timer",
+                            contentDescription = stringResource(R.string.player_sleep_timer_active_cd),
                             tint = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
@@ -679,7 +705,7 @@ private fun SleepTimerSheet(
                     if (isSelected) {
                         Icon(
                             imageVector = Icons.Filled.Check,
-                            contentDescription = "Selected",
+                            contentDescription = stringResource(R.string.player_sleep_timer_selected_cd),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -694,8 +720,12 @@ private data class SleepTimerOption(
     val state: SleepTimerState
 )
 
-private fun formatSleepTimerPreset(minutes: Long): String =
-    if (minutes == 1L) "1 minute" else "$minutes minutes"
+@Composable
+private fun SleepTimerState.localizedLabel(): String = when (this) {
+    SleepTimerState.Off -> stringResource(R.string.player_sleep_timer_off)
+    SleepTimerState.ChapterEnd -> stringResource(R.string.player_sleep_timer_end_of_chapter)
+    is SleepTimerState.Countdown -> formatSleepTimerCountdown(remainingMs)
+}
 
 internal fun SleepTimerState.formatLabel(): String = when (this) {
     SleepTimerState.Off -> "Off"

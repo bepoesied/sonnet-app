@@ -1,18 +1,25 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+
 package pw.kmr.sonnet.shared.playback
 
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.time.Clock
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -21,16 +28,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import pw.kmr.sonnet.shared.data.local.dao.PlaybackProgressDao
 import pw.kmr.sonnet.shared.data.local.entity.PlaybackProgressEntity
-import pw.kmr.sonnet.shared.ioDispatcher
+import pw.kmr.sonnet.shared.model.AppSettings
 import pw.kmr.sonnet.shared.model.DownloadedBook
 import pw.kmr.sonnet.shared.sync.ProgressSyncer
-
-internal expect fun currentTimeMillis(): Long
 
 private const val SAVE_DEBOUNCE_MS = 300L
 private const val PROGRESS_TICK_MS = 1_000L
 private const val PERIODIC_SAVE_MS = 5_000L
-private const val PERIODIC_SYNC_MS = 60_000L
+private const val DEFAULT_PERIODIC_SYNC_MS = AppSettings.DEFAULT_PLAYBACK_SYNC_CADENCE_SECONDS * 1_000L
 private const val REMOTE_CHECK_TIMEOUT_MS = 2_000L
 private const val REMOTE_RESUME_THRESHOLD_MS = 10_000L
 const val SEEK_INCREMENT_MS = 10_000L
@@ -46,8 +51,9 @@ class PlaybackOrchestrator(
     private val libraryRepository: PlaybackBookRepository,
     private val libraryDao: PlaybackProgressDao,
     private val progressSyncer: ProgressSyncer,
+    private val settings: Flow<AppSettings> = flowOf(AppSettings()),
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
-    private val workDispatcher: CoroutineDispatcher = ioDispatcher,
+    private val workDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val nowMillis: () -> Long = ::currentTimeMillis,
     private val monotonicMillis: () -> Long = defaultMonotonicClock(),
     private val remoteCheckTimeoutMs: Long = REMOTE_CHECK_TIMEOUT_MS
@@ -73,12 +79,14 @@ class PlaybackOrchestrator(
 
     private var lastPeriodicProgressSaveMs = 0L
     private var lastPeriodicProgressSyncMs = 0L
+    private var periodicSyncMs = DEFAULT_PERIODIC_SYNC_MS
 
     private var remoteCheckJob: Job? = null
     private var debouncedSaveJob: Job? = null
     private var pendingDebouncedForceSync = false
     private var progressTickerJob: Job? = null
     private var sleepTimerJob: Job? = null
+    private var settingsJob: Job? = null
 
     private val engineListener = object : PlaybackEngineListener {
         override fun onPlaybackStateChanged(isPlaying: Boolean, playbackState: Int) {
@@ -646,6 +654,14 @@ class PlaybackOrchestrator(
 
     private fun ensureTickersRunning() {
         if (!engine.isPlaying()) return
+        if (settingsJob == null) {
+            settingsJob = scope.launch(mainDispatcher) {
+                settings.flowOn(workDispatcher).collect { appSettings ->
+                    periodicSyncMs = appSettings.playbackSyncCadenceSeconds
+                        .coerceAtLeast(AppSettings.MIN_PLAYBACK_SYNC_CADENCE_SECONDS) * 1_000L
+                }
+            }
+        }
         if (progressTickerJob?.isActive != true) {
             progressTickerJob = scope.launch(mainDispatcher) {
                 progressTicker()
@@ -668,6 +684,8 @@ class PlaybackOrchestrator(
         progressTickerJob = null
         sleepTimerJob?.cancel()
         sleepTimerJob = null
+        settingsJob?.cancel()
+        settingsJob = null
     }
 
     private suspend fun progressTicker() {
@@ -681,7 +699,7 @@ class PlaybackOrchestrator(
                 lastPeriodicProgressSaveMs = now
                 scheduleDebouncedProgressSave(forceSync = false)
             }
-            if (now - lastPeriodicProgressSyncMs >= PERIODIC_SYNC_MS) {
+            if (now - lastPeriodicProgressSyncMs >= periodicSyncMs) {
                 lastPeriodicProgressSyncMs = now
                 scope.launch(workDispatcher) { progressSyncer.syncPending() }
             }
@@ -719,6 +737,7 @@ class PlaybackOrchestrator(
             debouncedSaveJob == null &&
             progressTickerJob == null &&
             sleepTimerJob == null &&
+            settingsJob == null &&
             !pendingOpenCurrentPlayer &&
             _pendingPlayerRequest.value == null &&
             engine.connectionState.value == PlaybackConnectionState.DISCONNECTED &&
@@ -750,6 +769,7 @@ class PlaybackOrchestrator(
         completedBookId = null
         lastPeriodicProgressSaveMs = 0L
         lastPeriodicProgressSyncMs = 0L
+        periodicSyncMs = DEFAULT_PERIODIC_SYNC_MS
         _pendingPlayerRequest.value = null
         _state.value = PlayerUiState()
     }
@@ -827,6 +847,8 @@ class PlaybackOrchestrator(
         private const val PLAYBACK_STATE_ENDED = 4
     }
 }
+
+private fun currentTimeMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
 private fun defaultMonotonicClock(): () -> Long {
     val startMark = TimeSource.Monotonic.markNow()

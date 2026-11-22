@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import pw.kmr.sonnet.R
 import pw.kmr.sonnet.shared.auth.LoginEffect
 import pw.kmr.sonnet.shared.auth.LoginRepository
 import pw.kmr.sonnet.shared.auth.LoginUiState
@@ -99,11 +101,11 @@ internal fun LoginScreen(
             horizontalAlignment = Alignment.Start
         ) {
             Text(
-                text = "Connect to Sonnet",
+                text = stringResource(R.string.login_title),
                 style = MaterialTheme.typography.headlineMedium
             )
             Text(
-                text = "Enter your Sonnet server URL. The app will discover its mobile OIDC settings and sign in through your browser.",
+                text = stringResource(R.string.login_subtitle),
                 modifier = Modifier.padding(top = 12.dp),
                 style = MaterialTheme.typography.bodyLarge
             )
@@ -114,7 +116,7 @@ internal fun LoginScreen(
                     .fillMaxWidth()
                     .padding(top = 24.dp),
                 enabled = !uiState.isLoading,
-                label = { Text("Server URL") },
+                label = { Text(stringResource(R.string.login_server_url_label)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Uri,
@@ -123,7 +125,7 @@ internal fun LoginScreen(
                 keyboardActions = KeyboardActions(
                     onGo = { if (canSubmit) onStartLogin() }
                 ),
-                placeholder = { Text("https://sonnet.example.com") }
+                placeholder = { Text(stringResource(R.string.login_server_url_placeholder)) }
             )
             if (uiState.errorMessage != null) {
                 Text(
@@ -133,6 +135,7 @@ internal fun LoginScreen(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
+            val signingInDescription = stringResource(R.string.login_signing_in_cd)
             Button(
                 onClick = onStartLogin,
                 enabled = canSubmit,
@@ -142,12 +145,12 @@ internal fun LoginScreen(
                     CircularProgressIndicator(
                         modifier = Modifier
                             .size(20.dp)
-                            .semantics { contentDescription = "Signing in" },
+                            .semantics { contentDescription = signingInDescription },
                         strokeWidth = 2.dp,
                         color = LocalContentColor.current
                     )
                 } else {
-                    Text("Sign in")
+                    Text(stringResource(R.string.login_sign_in))
                 }
             }
         }

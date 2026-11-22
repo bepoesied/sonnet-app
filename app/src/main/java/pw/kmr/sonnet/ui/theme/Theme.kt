@@ -1,7 +1,5 @@
 package pw.kmr.sonnet.ui.theme
 
-import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -12,15 +10,47 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = SonnetAmberDark,
+    onPrimary = SonnetOnAmberDark,
+    primaryContainer = SonnetAmberContainerDark,
+    onPrimaryContainer = SonnetOnAmberContainerDark,
+    secondary = SonnetUmberDark,
+    onSecondary = SonnetOnUmberDark,
+    secondaryContainer = SonnetUmberContainerDark,
+    onSecondaryContainer = SonnetOnUmberContainerDark,
+    tertiary = SonnetSageDark,
+    onTertiary = SonnetOnSageDark,
+    tertiaryContainer = SonnetSageContainerDark,
+    onTertiaryContainer = SonnetOnSageContainerDark,
+    background = SonnetObsidianDark,
+    onBackground = SonnetPaperDark,
+    surface = SonnetObsidianDark,
+    onSurface = SonnetPaperDark,
+    surfaceVariant = SonnetObsidianVariantDark,
+    onSurfaceVariant = SonnetPaperVariantDark,
+    outline = SonnetOutlineDark
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
+    primary = SonnetAmberLight,
+    onPrimary = SonnetOnAmberLight,
+    primaryContainer = SonnetAmberContainerLight,
+    onPrimaryContainer = SonnetOnAmberContainerLight,
+    secondary = SonnetUmberLight,
+    onSecondary = SonnetOnUmberLight,
+    secondaryContainer = SonnetUmberContainerLight,
+    onSecondaryContainer = SonnetOnUmberContainerLight,
+    tertiary = SonnetSageLight,
+    onTertiary = SonnetOnSageLight,
+    tertiaryContainer = SonnetSageContainerLight,
+    onTertiaryContainer = SonnetOnSageContainerLight,
+    background = SonnetParchmentLight,
+    onBackground = SonnetInkLight,
+    surface = SonnetParchmentLight,
+    onSurface = SonnetInkLight,
+    surfaceVariant = SonnetParchmentVariantLight,
+    onSurfaceVariant = SonnetInkVariantLight,
+    outline = SonnetOutlineLight
 )
 
 @Composable
@@ -30,7 +60,7 @@ fun SonnetTheme(
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        dynamicColor -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }

@@ -17,6 +17,7 @@ import androidx.work.WorkRequest
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import kotlinx.coroutines.CancellationException
+import pw.kmr.sonnet.R
 import pw.kmr.sonnet.SonnetApplication
 import pw.kmr.sonnet.shared.auth.AuthRequiredException
 import pw.kmr.sonnet.shared.library.BookDownloadScheduler
@@ -86,8 +87,8 @@ class BookDownloadWorker(
         ensureNotificationChannel()
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(bookTitle ?: "Downloading audiobook")
-            .setContentText("Downloading chapters…")
+            .setContentTitle(bookTitle ?: applicationContext.getString(R.string.download_notification_title_default))
+            .setContentText(applicationContext.getString(R.string.download_notification_text))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
@@ -107,10 +108,10 @@ class BookDownloadWorker(
         if (notificationManager.getNotificationChannel(CHANNEL_ID) != null) return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            CHANNEL_NAME,
+            applicationContext.getString(R.string.download_notification_channel_name),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Shows progress while downloading audiobooks for offline playback."
+            description = applicationContext.getString(R.string.download_notification_channel_description)
             setShowBadge(false)
         }
         notificationManager.createNotificationChannel(channel)
@@ -130,7 +131,6 @@ class BookDownloadWorker(
         const val KEY_BOOK_ID = "book_id"
         const val KEY_RESTART_IN_PROGRESS = "restart_in_progress"
         private const val CHANNEL_ID = "sonnet_downloads"
-        private const val CHANNEL_NAME = "Book Downloads"
         private const val NOTIFICATION_ID_BASE = 20_000
         private const val MAX_RETRY_ATTEMPTS = 3
         private val PERMANENT_HTTP_STATUS_CODES = setOf(400, 401, 403, 404, 410, 422)

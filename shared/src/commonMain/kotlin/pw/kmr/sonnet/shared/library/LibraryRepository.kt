@@ -2,6 +2,8 @@ package pw.kmr.sonnet.shared.library
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -11,7 +13,6 @@ import okio.Path.Companion.toPath
 import pw.kmr.sonnet.shared.data.local.dao.LibraryDao
 import pw.kmr.sonnet.shared.data.local.entity.DownloadEntity
 import pw.kmr.sonnet.shared.data.local.entity.DownloadedChapterEntity
-import pw.kmr.sonnet.shared.ioDispatcher as defaultIoDispatcher
 import pw.kmr.sonnet.shared.model.LibraryBook
 import pw.kmr.sonnet.shared.playback.PlaybackBookRepository
 import pw.kmr.sonnet.shared.remote.ApiException
@@ -24,7 +25,7 @@ class LibraryRepository(
     private val booksDirectory: Path,
     private val fileSystem: FileSystem,
     private val progressSyncer: ProgressSyncer = ProgressSyncer(booksApiClient, libraryDao),
-    private val ioDispatcher: CoroutineDispatcher = defaultIoDispatcher,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val onBeforeDeleteBook: suspend (String) -> Unit = {},
     private val onBeforeClearLibrary: suspend () -> Unit = {}
 ) : LibraryViewModelRepository, LocalLibraryCleaner, PlaybackBookRepository {

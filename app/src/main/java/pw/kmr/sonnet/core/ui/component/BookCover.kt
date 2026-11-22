@@ -1,6 +1,6 @@
 package pw.kmr.sonnet.core.ui.component
 
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -26,6 +27,7 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import java.io.File
 import java.util.Locale
+import pw.kmr.sonnet.R
 
 @Composable
 fun BookCover(
@@ -46,7 +48,7 @@ fun BookCover(
     val imageRequest = remember(context, normalizedBookId, normalizedLocalPath, normalizedRemoteUrl, crossfade) {
         val localFile = normalizedLocalPath?.let { path ->
             if (path.startsWith("file://")) {
-                File(Uri.parse(path).path ?: path)
+                File(path.toUri().path ?: path)
             } else {
                 File(path)
             }
@@ -93,7 +95,11 @@ fun BookCover(
         } else {
             AsyncImage(
                 model = imageRequest,
-                contentDescription = if (title.isNotBlank()) "$title cover" else "Book cover",
+                contentDescription = if (title.isNotBlank()) {
+                    stringResource(R.string.book_cover_named_cd, title)
+                } else {
+                    stringResource(R.string.book_cover_generic_cd)
+                },
                 contentScale = ContentScale.Crop,
                 onError = { loadFailed = true },
                 modifier = Modifier.fillMaxSize()

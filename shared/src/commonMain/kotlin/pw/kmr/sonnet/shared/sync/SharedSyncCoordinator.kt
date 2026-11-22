@@ -2,17 +2,18 @@ package pw.kmr.sonnet.shared.sync
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import pw.kmr.sonnet.shared.ioDispatcher
 
 class SharedSyncCoordinator(
     private val networkMonitor: NetworkMonitor,
     private val progressSyncer: ProgressSyncer,
-    dispatcher: CoroutineDispatcher = ioDispatcher
+    dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     private val rootJob = SupervisorJob()
     private val scope = CoroutineScope(rootJob + dispatcher)

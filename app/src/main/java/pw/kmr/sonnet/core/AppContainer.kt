@@ -122,7 +122,6 @@ class AppContainer(context: Context) {
         LoginRepository(
             authApiClient = authApiClient,
             authSessionManager = authSessionManager,
-            settingsRepository = settingsRepository,
             localLibraryCleaner = libraryRepository,
             enforcesHttps = BuildConfig.ENFORCE_HTTPS
         )
@@ -150,7 +149,8 @@ class AppContainer(context: Context) {
             engine = playbackEngine,
             libraryRepository = libraryRepository,
             libraryDao = playbackProgressDao,
-            progressSyncer = progressSyncer
+            progressSyncer = progressSyncer,
+            settings = settingsRepository.settings
         )
     }
     val playbackOrchestrator: PlaybackOrchestrator by playbackOrchestratorDelegate

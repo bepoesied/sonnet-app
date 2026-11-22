@@ -1,6 +1,10 @@
 package pw.kmr.sonnet.shared.model
 
 data class AppSettings(
-    val serverUrl: String? = null,
-    val playbackSyncCadenceSeconds: Long = 30L
-)
+    val playbackSyncCadenceSeconds: Long = DEFAULT_PLAYBACK_SYNC_CADENCE_SECONDS
+) {
+    companion object {
+        const val DEFAULT_PLAYBACK_SYNC_CADENCE_SECONDS = 60L
+        const val MIN_PLAYBACK_SYNC_CADENCE_SECONDS = 5L
+    }
+}

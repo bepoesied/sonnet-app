@@ -1,3 +1,94 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">Sonnet</string>
+
+    <!-- Common actions -->
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_retry">Retry</string>
+
+    <!-- Book cover -->
+    <string name="book_cover_named_cd">%1$s cover</string>
+    <string name="book_cover_generic_cd">Book cover</string>
+
+    <!-- Login -->
+    <string name="login_title">Connect to Sonnet</string>
+    <string name="login_subtitle">Enter your Sonnet server URL. The app will discover its mobile OIDC settings and sign in through your browser.</string>
+    <string name="login_server_url_label">Server URL</string>
+    <string name="login_server_url_placeholder" translatable="false">https://sonnet.example.com</string>
+    <string name="login_signing_in_cd">Signing in</string>
+    <string name="login_sign_in">Sign in</string>
+
+    <!-- Library -->
+    <string name="library_title">Library</string>
+    <string name="library_log_out">Log out</string>
+    <string name="library_logout_dialog_title">Log out?</string>
+    <string name="library_logout_dialog_message">Logging out will remove all downloaded audiobooks from this device.</string>
+    <string name="library_delete_download_dialog_title">Delete download?</string>
+    <string name="library_delete_download_dialog_message">Remove downloaded audio files for \"%1$s\" from this device? Your listening progress will be kept.</string>
+    <string name="library_no_matching_books">No matching books.</string>
+    <string name="library_reauth_banner_message">Session expired. Downloaded books stay playable.</string>
+    <string name="library_sign_in_again">Sign in again</string>
+    <string name="library_offline_banner_message">Offline — downloaded books remain playable.</string>
+    <string name="library_search_placeholder" tools:ignore="TypographyEllipsis">Search books...</string>
+    <string name="library_search_cd">Search</string>
+    <string name="library_clear_search_cd">Clear search</string>
+    <string name="library_action_mark_unplayed">Mark unplayed</string>
+    <string name="library_action_mark_played">Mark played</string>
+    <string name="library_action_unplayed">Unplayed</string>
+    <string name="library_action_played">Played</string>
+    <string name="library_status_completed">Completed</string>
+    <string name="library_status_in_progress">In progress</string>
+    <string name="library_download_cd">Download %1$s</string>
+    <string name="library_retry_download_cd">Retry download %1$s</string>
+    <string name="library_cancel_download_cd">Cancel download %1$s</string>
+    <string name="library_download_status_not_downloaded">Not downloaded</string>
+    <string name="library_download_status_queued">Queued</string>
+    <string name="library_download_status_downloading">Downloading</string>
+    <string name="library_download_status_downloaded">Downloaded</string>
+    <string name="library_download_status_failed">Failed</string>
+    <string name="library_download_action_download">Download</string>
+    <string name="library_empty_offline_title">You\'re offline</string>
+    <string name="library_empty_offline_subtitle">Connect to the internet to load your library.</string>
+    <string name="library_empty_failed_title">Library refresh failed</string>
+    <string name="library_empty_failed_subtitle">Check your connection and try again.</string>
+    <string name="library_empty_no_books_title">No books yet</string>
+    <string name="library_empty_no_books_subtitle">Pull down to refresh once audiobooks are available on your server.</string>
+
+    <!-- Player & MiniPlayer -->
+    <string name="player_title">Player</string>
+    <string name="player_minimize_cd">Minimize player</string>
+    <string name="player_book_unavailable_fallback">This book is unavailable. Try downloading it again.</string>
+    <string name="player_resume_dialog_title">Resume from server?</string>
+    <string name="player_resume_dialog_completed_message">This book is marked finished on the server.\nYour local position is in \"%1$s\" at %2$s.</string>
+    <string name="player_resume_dialog_progress_message">Server has newer progress in \"%1$s\" at %2$s.\nYour local position is in \"%3$s\" at %4$s.</string>
+    <string name="player_resume_use_server">Use server</string>
+    <string name="player_resume_keep_local">Keep local</string>
+    <string name="player_not_downloaded">This book is not downloaded yet.</string>
+    <string name="player_back_to_library">Back to library</string>
+    <string name="player_loading_book">Loading book</string>
+    <string name="player_preparing_chapters">Preparing chapters</string>
+    <string name="player_seek_back_cd">Seek back 10 seconds</string>
+    <string name="player_pause_cd">Pause</string>
+    <string name="player_play_cd">Play</string>
+    <string name="player_seek_forward_cd">Seek forward 10 seconds</string>
+    <string name="player_chapters">Chapters</string>
+    <string name="player_sleep">Sleep</string>
+    <string name="player_playback_position_cd">Playback position</string>
+    <string name="player_current_chapter_cd">Current chapter</string>
+    <string name="player_sleep_timer_title">Sleep timer</string>
+    <string name="player_sleep_timer_off">Off</string>
+    <string name="player_sleep_timer_end_of_chapter">End of chapter</string>
+    <string name="player_sleep_timer_active_remaining">Active: %1$s remaining</string>
+    <string name="player_sleep_timer_active_cd">Active sleep timer</string>
+    <string name="player_sleep_timer_selected_cd">Selected</string>
+    <plurals name="player_sleep_timer_minutes">
+        <item quantity="one">%d minute</item>
+        <item quantity="other">%d minutes</item>
+    </plurals>
+
+    <!-- Downloads notification -->
+    <string name="download_notification_title_default">Downloading audiobook</string>
+    <string name="download_notification_text">Downloading chapters…</string>
+    <string name="download_notification_channel_name">Book Downloads</string>
+    <string name="download_notification_channel_description">Shows progress while downloading audiobooks for offline playback.</string>
 </resources>

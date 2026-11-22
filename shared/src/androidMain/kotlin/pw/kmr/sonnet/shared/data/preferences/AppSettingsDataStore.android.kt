@@ -5,7 +5,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.core.FileStorage
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferencesFileSerializer
-import java.io.File
 
 fun createAppSettingsDataStore(context: Context): DataStore<Preferences> {
     val appContext = context.applicationContext

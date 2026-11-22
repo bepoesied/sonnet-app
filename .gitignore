@@ -64,3 +64,8 @@ captures/
 Thumbs.db
 
 .kotlin/
+
+# devenv / direnv
+.devenv*
+.direnv/
+

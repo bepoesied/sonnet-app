@@ -59,6 +59,7 @@ import androidx.compose.ui.Alignment.Companion.CenterVertically
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
@@ -70,6 +71,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import pw.kmr.sonnet.R
 import pw.kmr.sonnet.core.ui.component.BookCover
 import pw.kmr.sonnet.core.ui.component.SwipeActionBox
 import pw.kmr.sonnet.core.ui.component.SwipeDirection
@@ -140,10 +142,10 @@ internal fun LibraryScreen(
     if (showLogoutConfirmation) {
         AlertDialog(
             onDismissRequest = { showLogoutConfirmation = false },
-            title = { Text(text = "Log out?") },
+            title = { Text(text = stringResource(R.string.library_logout_dialog_title)) },
             text = {
                 Text(
-                    text = "Logging out will remove all downloaded audiobooks from this device."
+                    text = stringResource(R.string.library_logout_dialog_message)
                 )
             },
             confirmButton = {
@@ -154,14 +156,14 @@ internal fun LibraryScreen(
                     }
                 ) {
                     Text(
-                        text = "Log out",
+                        text = stringResource(R.string.library_log_out),
                         color = MaterialTheme.colorScheme.error
                     )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showLogoutConfirmation = false }) {
-                    Text(text = "Cancel")
+                    Text(text = stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -171,10 +173,10 @@ internal fun LibraryScreen(
     if (pendingDelete != null) {
         AlertDialog(
             onDismissRequest = { bookPendingDelete = null },
-            title = { Text(text = "Delete download?") },
+            title = { Text(text = stringResource(R.string.library_delete_download_dialog_title)) },
             text = {
                 Text(
-                    text = "Remove downloaded audio files for \"${pendingDelete.title}\" from this device? Your listening progress will be kept."
+                    text = stringResource(R.string.library_delete_download_dialog_message, pendingDelete.title)
                 )
             },
             confirmButton = {
@@ -185,14 +187,14 @@ internal fun LibraryScreen(
                     }
                 ) {
                     Text(
-                        text = "Delete",
+                        text = stringResource(R.string.action_delete),
                         color = MaterialTheme.colorScheme.error
                     )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { bookPendingDelete = null }) {
-                    Text(text = "Cancel")
+                    Text(text = stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -204,10 +206,10 @@ internal fun LibraryScreen(
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
-                title = { Text(text = "Library") },
+                title = { Text(text = stringResource(R.string.library_title)) },
                 actions = {
                     TextButton(onClick = { showLogoutConfirmation = true }) {
-                        Text(text = "Log out")
+                        Text(text = stringResource(R.string.library_log_out))
                     }
                 },
                 scrollBehavior = scrollBehavior
@@ -308,7 +310,7 @@ private fun LibraryContent(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "No matching books.",
+                    text = stringResource(R.string.library_no_matching_books),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -351,13 +353,13 @@ private fun ReauthBanner(
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "Session expired. Downloaded books stay playable.",
+                text = stringResource(R.string.library_reauth_banner_message),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.weight(1f)
             )
             TextButton(onClick = onSignInAgain) {
-                Text(text = "Sign in again")
+                Text(text = stringResource(R.string.library_sign_in_again))
             }
         }
     }
@@ -384,7 +386,7 @@ private fun OfflineBanner(modifier: Modifier = Modifier) {
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "Offline — downloaded books remain playable.",
+                text = stringResource(R.string.library_offline_banner_message),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -402,11 +404,11 @@ private fun LibrarySearchBar(
         value = query,
         onValueChange = onQueryChange,
         modifier = modifier,
-        placeholder = { Text("Search books...") },
+        placeholder = { Text(stringResource(R.string.library_search_placeholder)) },
         leadingIcon = {
             Icon(
                 imageVector = Icons.Default.Search,
-                contentDescription = "Search"
+                contentDescription = stringResource(R.string.library_search_cd)
             )
         },
         trailingIcon = {
@@ -414,7 +416,7 @@ private fun LibrarySearchBar(
                 IconButton(onClick = { onQueryChange("") }) {
                     Icon(
                         imageVector = Icons.Default.Clear,
-                        contentDescription = "Clear search"
+                        contentDescription = stringResource(R.string.library_clear_search_cd)
                     )
                 }
             }
@@ -475,7 +477,9 @@ private fun LibraryRow(
     modifier: Modifier = Modifier
 ) {
     val downloadActionLabel = book.downloadStatus.actionLabel()
-    val completionActionLabel = if (book.isCompleted) "Mark unplayed" else "Mark played"
+    val completionActionLabel = stringResource(
+        if (book.isCompleted) R.string.library_action_mark_unplayed else R.string.library_action_mark_played
+    )
 
     SwipeActionBox(
         revealedDirection = revealedDirection,
@@ -536,7 +540,9 @@ private fun LibraryRow(
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(verticalAlignment = CenterVertically) {
                     Text(
-                        text = if (book.isCompleted) "Completed" else "In progress",
+                        text = stringResource(
+                            if (book.isCompleted) R.string.library_status_completed else R.string.library_status_in_progress
+                        ),
                         style = MaterialTheme.typography.labelMedium,
                         color = if (book.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -579,7 +585,7 @@ private fun BookTrailingAction(
             IconButton(onClick = onDownloadAction) {
                 Icon(
                     imageVector = Icons.Filled.Download,
-                    contentDescription = "Download ${book.title}",
+                    contentDescription = stringResource(R.string.library_download_cd, book.title),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -589,7 +595,7 @@ private fun BookTrailingAction(
             IconButton(onClick = onDownloadAction) {
                 Icon(
                     imageVector = Icons.Filled.Refresh,
-                    contentDescription = "Retry download ${book.title}",
+                    contentDescription = stringResource(R.string.library_retry_download_cd, book.title),
                     tint = MaterialTheme.colorScheme.error
                 )
             }
@@ -600,7 +606,7 @@ private fun BookTrailingAction(
             IconButton(onClick = onDownloadAction) {
                 Icon(
                     imageVector = Icons.Filled.Close,
-                    contentDescription = "Cancel download ${book.title}",
+                    contentDescription = stringResource(R.string.library_cancel_download_cd, book.title),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -613,7 +619,7 @@ private fun BookTrailingAction(
             ) {
                 Icon(
                     imageVector = Icons.Filled.DownloadDone,
-                    contentDescription = "Downloaded",
+                    contentDescription = stringResource(R.string.library_download_status_downloaded),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -719,16 +725,20 @@ private fun EmptyLibrary(
         lastRefreshFailed -> Icons.Filled.ErrorOutline
         else -> Icons.AutoMirrored.Filled.MenuBook
     }
-    val title = when {
-        !isOnline -> "You're offline"
-        lastRefreshFailed -> "Library refresh failed"
-        else -> "No books yet"
-    }
-    val subtitle = when {
-        !isOnline -> "Connect to the internet to load your library."
-        lastRefreshFailed -> "Check your connection and try again."
-        else -> "Pull down to refresh once audiobooks are available on your server."
-    }
+    val title = stringResource(
+        when {
+            !isOnline -> R.string.library_empty_offline_title
+            lastRefreshFailed -> R.string.library_empty_failed_title
+            else -> R.string.library_empty_no_books_title
+        }
+    )
+    val subtitle = stringResource(
+        when {
+            !isOnline -> R.string.library_empty_offline_subtitle
+            lastRefreshFailed -> R.string.library_empty_failed_subtitle
+            else -> R.string.library_empty_no_books_subtitle
+        }
+    )
 
     Column(
         modifier = modifier
@@ -764,7 +774,7 @@ private fun EmptyLibrary(
         if (lastRefreshFailed || !isOnline) {
             Spacer(modifier = Modifier.height(20.dp))
             FilledTonalButton(onClick = onRetry) {
-                Text(text = "Retry")
+                Text(text = stringResource(R.string.action_retry))
             }
         }
     }
@@ -775,7 +785,10 @@ private data class RevealedLibraryAction(
     val direction: SwipeDirection
 )
 
-private fun LibraryBook.completionActionLabel(): String = if (isCompleted) "Unplayed" else "Played"
+@Composable
+private fun LibraryBook.completionActionLabel(): String = stringResource(
+    if (isCompleted) R.string.library_action_unplayed else R.string.library_action_played
+)
 
 @Composable
 private fun LibraryBook.completionActionColor() = if (isCompleted) {
@@ -791,13 +804,16 @@ private fun LibraryBook.completionActionContentColor() = if (isCompleted) {
     MaterialTheme.colorScheme.onPrimaryContainer
 }
 
-private fun DownloadStatus.label(): String = when (this) {
-    DownloadStatus.NotDownloaded -> "Not downloaded"
-    DownloadStatus.Queued -> "Queued"
-    DownloadStatus.Downloading -> "Downloading"
-    DownloadStatus.Downloaded -> "Downloaded"
-    DownloadStatus.Failed -> "Failed"
-}
+@Composable
+private fun DownloadStatus.label(): String = stringResource(
+    when (this) {
+        DownloadStatus.NotDownloaded -> R.string.library_download_status_not_downloaded
+        DownloadStatus.Queued -> R.string.library_download_status_queued
+        DownloadStatus.Downloading -> R.string.library_download_status_downloading
+        DownloadStatus.Downloaded -> R.string.library_download_status_downloaded
+        DownloadStatus.Failed -> R.string.library_download_status_failed
+    }
+)
 
 @Composable
 private fun DownloadStatus.color() = when (this) {
@@ -808,13 +824,16 @@ private fun DownloadStatus.color() = when (this) {
     DownloadStatus.Failed -> MaterialTheme.colorScheme.error
 }
 
-private fun DownloadStatus.actionLabel(): String = when (this) {
-    DownloadStatus.NotDownloaded -> "Download"
-    DownloadStatus.Failed -> "Retry"
-    DownloadStatus.Queued -> "Cancel"
-    DownloadStatus.Downloading -> "Cancel"
-    DownloadStatus.Downloaded -> "Delete"
-}
+@Composable
+private fun DownloadStatus.actionLabel(): String = stringResource(
+    when (this) {
+        DownloadStatus.NotDownloaded -> R.string.library_download_action_download
+        DownloadStatus.Failed -> R.string.action_retry
+        DownloadStatus.Queued -> R.string.action_cancel
+        DownloadStatus.Downloading -> R.string.action_cancel
+        DownloadStatus.Downloaded -> R.string.action_delete
+    }
+)
 
 @Composable
 private fun DownloadStatus.actionColor() = when (this) {
