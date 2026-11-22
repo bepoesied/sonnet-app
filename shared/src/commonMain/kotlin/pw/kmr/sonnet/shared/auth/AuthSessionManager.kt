@@ -1,9 +1,7 @@
 package pw.kmr.sonnet.shared.auth
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import pw.kmr.sonnet.shared.model.AuthSession
@@ -16,7 +14,7 @@ class AuthSessionManager(
 ) {
     private val refreshMutex = Mutex()
 
-    val currentSession: Flow<AuthSession?> = sessionStore.currentSession
+    val currentSession: StateFlow<AuthSession?> = sessionStore.currentSession
     val requiresLogin: StateFlow<Boolean> = sessionStore.requiresLogin
 
     suspend fun saveSession(session: AuthSession) {
@@ -86,9 +84,9 @@ class AuthSessionManager(
         }
     }
 
-    private suspend fun validSessionOrThrow(message: String): AuthSession {
+    private fun validSessionOrThrow(message: String): AuthSession {
         if (requiresLogin.value) throw AuthRequiredException("Sign in again before $message.")
-        return currentSession.firstOrNull() ?: throw AuthRequiredException("Sign in before $message.")
+        return currentSession.value ?: throw AuthRequiredException("Sign in before $message.")
     }
 
     private suspend fun refreshSession(

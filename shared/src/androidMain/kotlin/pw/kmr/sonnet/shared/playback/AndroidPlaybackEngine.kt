@@ -3,6 +3,7 @@ package pw.kmr.sonnet.shared.playback
 import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
+import android.os.Bundle
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
@@ -182,6 +183,11 @@ class AndroidPlaybackEngine(
                                 .setAlbumTitle(item.albumTitle)
                                 .setArtist(item.artist)
                                 .setArtworkUri(item.artworkUri?.let { Uri.fromFile(File(it)) })
+                                .apply {
+                                    item.bookId?.let { bookId ->
+                                        setExtras(Bundle().apply { putString(EXTRA_BOOK_ID, bookId) })
+                                    }
+                                }
                                 .build()
                         )
                         .build()
@@ -279,5 +285,9 @@ class AndroidPlaybackEngine(
         } else {
             mainExecutor.execute { block() }
         }
+    }
+
+    companion object {
+        const val EXTRA_BOOK_ID = "pw.kmr.sonnet.extra.BOOK_ID"
     }
 }

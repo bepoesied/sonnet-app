@@ -66,6 +66,7 @@ class PlaybackOrchestrator(
     private var playbackStarted = false
     private var chapterEndSleepEnabled = false
     private var pendingPlayAfterResumeResolution = false
+    private var pendingOpenCurrentPlayer = false
     private var suppressDiscontinuitySave = false
     private var completedBookId: String? = null
     private var sessionGeneration = 0L
@@ -313,7 +314,17 @@ class PlaybackOrchestrator(
     }
 
     fun openFullPlayer(bookId: String) {
+        pendingOpenCurrentPlayer = false
         _pendingPlayerRequest.value = bookId
+    }
+
+    fun requestOpenCurrentPlayer() {
+        val currentBookId = loadedBook?.id ?: _state.value.bookId
+        if (currentBookId != null) {
+            openFullPlayer(currentBookId)
+        } else {
+            pendingOpenCurrentPlayer = true
+        }
     }
 
     fun consumePendingPlayerRequest(): String? {
@@ -446,7 +457,8 @@ class PlaybackOrchestrator(
                     title = chapter.title,
                     albumTitle = book.title,
                     artist = book.author,
-                    artworkUri = book.coverFilePath
+                    artworkUri = book.coverFilePath,
+                    bookId = book.id
                 )
             },
             startIndex = target.chapterIndex,
@@ -707,6 +719,8 @@ class PlaybackOrchestrator(
             debouncedSaveJob == null &&
             progressTickerJob == null &&
             sleepTimerJob == null &&
+            !pendingOpenCurrentPlayer &&
+            _pendingPlayerRequest.value == null &&
             engine.connectionState.value == PlaybackConnectionState.DISCONNECTED &&
             _state.value == PlayerUiState()
         if (alreadyReset) return
@@ -731,10 +745,12 @@ class PlaybackOrchestrator(
         cachedUiChapters = emptyList()
         chapterEndSleepEnabled = false
         pendingPlayAfterResumeResolution = false
+        pendingOpenCurrentPlayer = false
         suppressDiscontinuitySave = false
         completedBookId = null
         lastPeriodicProgressSaveMs = 0L
         lastPeriodicProgressSyncMs = 0L
+        _pendingPlayerRequest.value = null
         _state.value = PlayerUiState()
     }
 
@@ -783,6 +799,10 @@ class PlaybackOrchestrator(
                 canPlay = book != null && engine.mediaItemCount() > 0,
                 bookMissing = if (book != null) false else it.bookMissing
             )
+        }
+        if (book != null && pendingOpenCurrentPlayer) {
+            pendingOpenCurrentPlayer = false
+            _pendingPlayerRequest.value = book.id
         }
     }
 

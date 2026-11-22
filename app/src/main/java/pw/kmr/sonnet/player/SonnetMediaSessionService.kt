@@ -5,7 +5,9 @@ import android.content.Intent
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -15,10 +17,12 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import pw.kmr.sonnet.MainActivity
 import pw.kmr.sonnet.SonnetApplication
+import pw.kmr.sonnet.shared.playback.AndroidPlaybackEngine
 import pw.kmr.sonnet.shared.playback.SEEK_INCREMENT_MS
 
 class SonnetMediaSessionService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
+    private var lastSessionActivityBookId: String? = null
 
     @OptIn(UnstableApi::class)
     override fun onCreate() {
@@ -56,17 +60,19 @@ class SonnetMediaSessionService : MediaSessionService() {
                             .build()
                     )
                     .build()
+                addListener(object : Player.Listener {
+                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                        updateSessionActivity(mediaItem.bookId())
+                    }
+
+                    override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                        updateSessionActivity(this@apply.currentMediaItem.bookId())
+                    }
+                })
             }
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build())
-        val sessionIntent = Intent(this, MainActivity::class.java).apply {
-            action = ACTION_OPEN_PLAYER
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val sessionActivity = PendingIntent.getActivity(
-            this, 0, sessionIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
         mediaSession = MediaSession.Builder(this, player)
-            .setSessionActivity(sessionActivity)
+            .setSessionActivity(createSessionActivityPendingIntent(bookId = null))
             .build()
     }
 
@@ -88,18 +94,45 @@ class SonnetMediaSessionService : MediaSessionService() {
             release()
         }
         mediaSession = null
+        lastSessionActivityBookId = null
         super.onDestroy()
     }
+
+    @OptIn(UnstableApi::class)
+    private fun updateSessionActivity(bookId: String?) {
+        if (bookId == lastSessionActivityBookId) return
+        lastSessionActivityBookId = bookId
+        mediaSession?.setSessionActivity(createSessionActivityPendingIntent(bookId))
+    }
+
+    private fun createSessionActivityPendingIntent(bookId: String?): PendingIntent {
+        val sessionIntent = Intent(this, MainActivity::class.java).apply {
+            action = ACTION_OPEN_PLAYER
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            if (!bookId.isNullOrBlank()) {
+                putExtra(EXTRA_BOOK_ID, bookId)
+            }
+        }
+        return PendingIntent.getActivity(
+            this,
+            0,
+            sessionIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
+    private fun MediaItem?.bookId(): String? =
+        this?.mediaMetadata?.extras?.getString(EXTRA_BOOK_ID)?.takeIf { it.isNotBlank() }
 
     private fun flushPlaybackProgress() {
         (application as? SonnetApplication)
             ?.appContainer
-            ?.playbackOrchestrator
-            ?.flushProgress(forceSync = true)
+            ?.flushPlaybackProgressIfInitialized(forceSync = true)
     }
 
     companion object {
         const val ACTION_OPEN_PLAYER = "pw.kmr.sonnet.action.OPEN_PLAYER"
+        const val EXTRA_BOOK_ID = AndroidPlaybackEngine.EXTRA_BOOK_ID
         private const val MIN_BUFFER_MS = 15_000
         private const val MAX_BUFFER_MS = 30_000
         private const val BUFFER_FOR_PLAYBACK_MS = 250

@@ -4,7 +4,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -272,7 +271,7 @@ private class FakeSessionStore(
 
     var onSave: (AuthSession) -> Unit = {}
 
-    override val currentSession: Flow<AuthSession?> = sessionState
+    override val currentSession: StateFlow<AuthSession?> = sessionState.asStateFlow()
     override val requiresLogin: StateFlow<Boolean> = requiresLoginState.asStateFlow()
 
     override suspend fun saveSession(session: AuthSession) {

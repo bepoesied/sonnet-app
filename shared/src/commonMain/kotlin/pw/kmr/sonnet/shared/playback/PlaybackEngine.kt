@@ -37,7 +37,8 @@ data class MediaItemDescriptor(
     val title: String,
     val albumTitle: String,
     val artist: String?,
-    val artworkUri: String?
+    val artworkUri: String?,
+    val bookId: String? = null
 )
 
 interface PlaybackEngineListener {

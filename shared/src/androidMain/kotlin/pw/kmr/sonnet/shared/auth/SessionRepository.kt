@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,7 +44,7 @@ class SessionRepository(private val context: Context) : SessionStore {
     private val sessionState = MutableStateFlow<AuthSession?>(null)
     private val requiresLoginState = MutableStateFlow(false)
 
-    override val currentSession: Flow<AuthSession?> = sessionState
+    override val currentSession: StateFlow<AuthSession?> = sessionState.asStateFlow()
     override val requiresLogin: StateFlow<Boolean> = requiresLoginState.asStateFlow()
 
     override suspend fun saveSession(session: AuthSession) {

@@ -19,28 +19,23 @@ class AppViewModel(
     private val authSessionManager: AuthSessionManager
 ) : ViewModel() {
     private val bootstrapComplete = MutableStateFlow(false)
-    private val session = authSessionManager.currentSession.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = null
-    )
 
     val uiState: StateFlow<AppUiState> = combine(
         bootstrapComplete,
-        session,
+        authSessionManager.currentSession,
         authSessionManager.requiresLogin
-    ) { complete, currentSession, requiresReauth ->
+    ) { complete, _, _ ->
         if (complete) {
             AppUiState.Ready(
-                session = currentSession,
-                requiresReauth = requiresReauth
+                session = authSessionManager.currentSession.value,
+                requiresReauth = authSessionManager.requiresLogin.value
             )
         } else {
             AppUiState.Loading
         }
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
+        started = SharingStarted.Eagerly,
         initialValue = AppUiState.Loading
     )
 

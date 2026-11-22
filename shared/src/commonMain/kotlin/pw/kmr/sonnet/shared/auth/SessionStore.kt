@@ -1,11 +1,10 @@
 package pw.kmr.sonnet.shared.auth
 
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import pw.kmr.sonnet.shared.model.AuthSession
 
 interface SessionStore {
-    val currentSession: Flow<AuthSession?>
+    val currentSession: StateFlow<AuthSession?>
     val requiresLogin: StateFlow<Boolean>
 
     suspend fun saveSession(session: AuthSession)

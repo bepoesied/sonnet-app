@@ -44,18 +44,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment.Companion.CenterVertically
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
-import coil3.request.crossfade
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import pw.kmr.sonnet.core.ui.component.BookCover
 import pw.kmr.sonnet.core.ui.component.SwipeActionBox
 import pw.kmr.sonnet.core.ui.component.SwipeDirection
 import pw.kmr.sonnet.shared.library.BookDownloadScheduler
@@ -296,7 +292,13 @@ private fun LibraryRow(
                 .padding(vertical = 14.dp),
             verticalAlignment = CenterVertically
         ) {
-            CoverImage(book = book, modifier = Modifier.size(72.dp))
+            BookCover(
+                bookId = book.id,
+                title = book.title,
+                localCoverPath = book.localCoverUri,
+                remoteCoverUrl = book.remoteCoverUrl,
+                modifier = Modifier.size(72.dp)
+            )
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -383,38 +385,6 @@ private fun DownloadActionBackground(book: LibraryBook, onClick: () -> Unit) {
             style = MaterialTheme.typography.labelLarge,
             color = book.downloadStatus.actionContentColor()
         )
-    }
-}
-
-@Composable
-private fun CoverImage(book: LibraryBook, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center
-    ) {
-        val cover = book.localCoverUri ?: book.remoteCoverUrl
-        if (cover == null) {
-            Text(
-                text = book.title.firstOrNull()?.toString()?.uppercase() ?: "?",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(cover)
-                    .diskCacheKey("cover-${book.id}")
-                    .memoryCacheKey("cover-${book.id}")
-                    .crossfade(true)
-                    .build(),
-                contentDescription = "${book.title} cover",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
     }
 }
 

@@ -43,6 +43,7 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import pw.kmr.sonnet.auth.LoginRoute
 import pw.kmr.sonnet.core.AppContainer
@@ -57,6 +58,15 @@ fun SonnetApp(
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val canSync = uiState is AppUiState.Ready && uiState.session != null && !uiState.requiresReauth
+    LaunchedEffect(canSync) {
+        if (canSync) {
+            appContainer.syncCoordinator.start()
+        } else {
+            appContainer.stopSyncCoordinatorIfInitialized()
+        }
+    }
+
     when (uiState) {
         AppUiState.Loading -> LoadingApp(modifier = modifier)
         is AppUiState.Ready -> AppNavHost(
@@ -86,7 +96,7 @@ private fun AppNavHost(
             backStack.add(targetKey)
         }
         if (wasAuthenticated && !isAuthenticated) {
-            appContainer.playbackOrchestrator.stopAndReset()
+            appContainer.stopPlaybackIfInitialized()
         }
         wasAuthenticated = isAuthenticated
     }
@@ -142,6 +152,7 @@ private fun LibraryWithPlayer(appContainer: AppContainer, onLogout: () -> Unit) 
     }
     var dialogVisible by remember { mutableStateOf(false) }
     var isClosing by remember { mutableStateOf(false) }
+    var closeJob by remember { mutableStateOf<Job?>(null) }
     val expansion = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
@@ -150,7 +161,11 @@ private fun LibraryWithPlayer(appContainer: AppContainer, onLogout: () -> Unit) 
     var miniPlayerHeightPx by remember { mutableIntStateOf(0) }
 
     fun openPlayer(destination: PlayerDestination) {
-        if (playerDestination != null) return
+        val current = playerDestination
+        if (current == destination && !isClosing) return
+        closeJob?.cancel()
+        closeJob = null
+        isClosing = false
         focusManager.clearFocus()
         keyboardController?.hide()
         dialogVisible = false
@@ -160,15 +175,19 @@ private fun LibraryWithPlayer(appContainer: AppContainer, onLogout: () -> Unit) 
     fun closePlayer() {
         if (playerDestination == null || isClosing) return
         isClosing = true
-        scope.launch {
+        closeJob?.cancel()
+        closeJob = scope.launch {
             expansion.animateTo(0f, animationSpec = tween(300))
             playerDestination = null
             isClosing = false
+            closeJob = null
         }
     }
 
-    LaunchedEffect(playerDestination) {
-        if (playerDestination != null) expansion.animateTo(1f, animationSpec = tween(360))
+    LaunchedEffect(playerDestination, isClosing) {
+        if (playerDestination != null && !isClosing) {
+            expansion.animateTo(1f, animationSpec = tween(360))
+        }
     }
 
     // This request is retained by the orchestrator during login/session hydration, then consumed
