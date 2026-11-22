@@ -2,24 +2,48 @@ package pw.kmr.sonnet.shared.data.local
 
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import platform.Foundation.NSDocumentDirectory
+import kotlinx.cinterop.ExperimentalForeignApi
+import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSNumber
+import platform.Foundation.NSURL
+import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUserDomainMask
 
+@OptIn(ExperimentalForeignApi::class)
 fun getSonnetDatabaseBuilder(): RoomDatabase.Builder<SonnetDatabase> {
-    val dbFilePath = documentDirectory() + "/$SONNET_DATABASE_NAME"
+    val dbDirectoryUrl = excludedDatabaseDirectoryUrl()
+    val dbFilePath = requireNotNull(dbDirectoryUrl.path) + "/$SONNET_DATABASE_NAME"
     return Room.databaseBuilder<SonnetDatabase>(
         name = dbFilePath,
     )
 }
 
-private fun documentDirectory(): String {
-    val documentDirectory = NSFileManager.defaultManager.URLForDirectory(
-        directory = NSDocumentDirectory,
-        inDomain = NSUserDomainMask,
-        appropriateForURL = null,
-        create = false,
+@OptIn(ExperimentalForeignApi::class)
+private fun excludedDatabaseDirectoryUrl(): NSURL {
+    val fileManager = NSFileManager.defaultManager
+    val appSupportUrl = requireNotNull(
+        fileManager.URLForDirectory(
+            directory = NSApplicationSupportDirectory,
+            inDomain = NSUserDomainMask,
+            appropriateForURL = null,
+            create = true,
+            error = null,
+        )
+    )
+    val dbDirectoryUrl = requireNotNull(
+        appSupportUrl.URLByAppendingPathComponent("database", isDirectory = true)
+    )
+    fileManager.createDirectoryAtURL(
+        url = dbDirectoryUrl,
+        withIntermediateDirectories = true,
+        attributes = null,
         error = null,
     )
-    return requireNotNull(documentDirectory?.path)
+    dbDirectoryUrl.setResourceValue(
+        value = NSNumber(bool = true),
+        forKey = NSURLIsExcludedFromBackupKey,
+        error = null,
+    )
+    return dbDirectoryUrl
 }

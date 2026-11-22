@@ -12,6 +12,9 @@ room {
 }
 
 kotlin {
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
 
     // Target declarations - add or remove as needed below. These define
     // which platforms this KMP module supports.
@@ -47,6 +50,7 @@ kotlin {
     iosArm64 {
         binaries.framework {
             baseName = xcfName
+            isStatic = true
             export(libs.androidx.lifecycle.viewmodel)
         }
     }
@@ -54,6 +58,7 @@ kotlin {
     iosSimulatorArm64 {
         binaries.framework {
             baseName = xcfName
+            isStatic = true
             export(libs.androidx.lifecycle.viewmodel)
         }
     }
@@ -75,6 +80,7 @@ kotlin {
                 api(libs.androidx.datastore.preferences)
                 api(libs.androidx.room.runtime)
                 implementation(libs.androidx.sqlite.bundled)
+                implementation(libs.okio)
                 implementation(libs.ktor.client.core)
                 implementation(libs.ktor.client.content.negotiation)
                 implementation(libs.ktor.serialization.kotlinx.json)
@@ -115,6 +121,7 @@ kotlin {
 
         iosMain {
             dependencies {
+                implementation(libs.ktor.client.darwin)
             }
         }
     }
