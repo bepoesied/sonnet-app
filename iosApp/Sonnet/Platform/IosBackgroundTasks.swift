@@ -7,7 +7,7 @@ enum SonnetBackgroundTasks {
     static let progressSyncIdentifier = "pw.kmr.sonnet.progress-sync"
     static let downloadIdentifier = "pw.kmr.sonnet.download"
 
-    static func register(containerProvider: @escaping () -> IosAppContainer?) {
+    static func register(containerProvider: @escaping @MainActor () -> IosAppContainer) {
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: progressSyncIdentifier,
             using: nil
@@ -16,7 +16,7 @@ enum SonnetBackgroundTasks {
                 task.setTaskCompleted(success: false)
                 return
             }
-            handleProgressSync(task: refreshTask, container: containerProvider())
+            handleProgressSync(task: refreshTask, containerProvider: containerProvider)
         }
 
         BGTaskScheduler.shared.register(
@@ -27,7 +27,7 @@ enum SonnetBackgroundTasks {
                 task.setTaskCompleted(success: false)
                 return
             }
-            handleDownloadResume(task: processingTask, container: containerProvider())
+            handleDownloadResume(task: processingTask, containerProvider: containerProvider)
         }
     }
 
@@ -44,13 +44,12 @@ enum SonnetBackgroundTasks {
         try? BGTaskScheduler.shared.submit(request)
     }
 
-    private static func handleProgressSync(task: BGAppRefreshTask, container: IosAppContainer?) {
-        guard let container else {
-            task.setTaskCompleted(success: false)
-            return
-        }
-
+    private static func handleProgressSync(
+        task: BGAppRefreshTask,
+        containerProvider: @escaping @MainActor () -> IosAppContainer
+    ) {
         let work = Task {
+            let container = await MainActor.run { containerProvider() }
             do {
                 let completed = try await container.syncPendingProgressForBackgroundTask().boolValue
                 if !completed {
@@ -70,13 +69,12 @@ enum SonnetBackgroundTasks {
         }
     }
 
-    private static func handleDownloadResume(task: BGProcessingTask, container: IosAppContainer?) {
-        guard let container else {
-            task.setTaskCompleted(success: false)
-            return
-        }
-
+    private static func handleDownloadResume(
+        task: BGProcessingTask,
+        containerProvider: @escaping @MainActor () -> IosAppContainer
+    ) {
         let work = Task {
+            let container = await MainActor.run { containerProvider() }
             do {
                 let bookIds = try await container.interruptedDownloadBookIds()
                 var allSucceeded = true
