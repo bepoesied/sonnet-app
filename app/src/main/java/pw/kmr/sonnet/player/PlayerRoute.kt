@@ -79,8 +79,10 @@ import pw.kmr.sonnet.core.ui.component.BookCover
 import pw.kmr.sonnet.shared.playback.PlaybackOrchestrator
 import pw.kmr.sonnet.shared.playback.PlayerChapter
 import pw.kmr.sonnet.shared.playback.PlayerUiState
+import pw.kmr.sonnet.shared.playback.PlayerViewModel
 import pw.kmr.sonnet.shared.playback.ProgressResumePrompt
 import pw.kmr.sonnet.shared.playback.SleepTimerState
+import pw.kmr.sonnet.shared.playback.playerViewModelFactory
 
 @Composable
 fun PlayerRoute(
@@ -92,7 +94,7 @@ fun PlayerRoute(
     modifier: Modifier = Modifier
 ) {
     val factory = remember(playbackOrchestrator, bookId) {
-        PlayerViewModel.Factory(playbackOrchestrator, bookId)
+        playerViewModelFactory(playbackOrchestrator, bookId)
     }
     val viewModel: PlayerViewModel = viewModel(
         key = "player-$bookId",
