@@ -124,7 +124,7 @@ class PlayerViewModelHandle(
     fun observeState(onChange: (PlayerUiState) -> Unit): FlowSubscription =
         viewModel.uiState.subscribe(onEach = onChange)
 
-    fun load() = viewModel.load()
+    fun loadBook() = viewModel.load()
 
     fun playPause() = viewModel.playPause()
 

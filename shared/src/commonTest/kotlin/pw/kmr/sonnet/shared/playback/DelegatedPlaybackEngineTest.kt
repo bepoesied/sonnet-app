@@ -101,7 +101,7 @@ private class FakePlaybackDriver(
 
     override fun connect(): Boolean = shouldConnect
 
-    override fun release() {
+    override fun disconnect() {
         playing = false
         items = emptyList()
         index = 0

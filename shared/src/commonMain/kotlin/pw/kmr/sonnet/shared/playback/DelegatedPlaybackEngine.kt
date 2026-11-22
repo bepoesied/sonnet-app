@@ -16,7 +16,7 @@ interface PlaybackPlatformDriver {
 
     fun connect(): Boolean
 
-    fun release()
+    fun disconnect()
 
     fun loadMedia(items: List<MediaItemDescriptor>, startIndex: Int, startPositionMs: Long)
 
@@ -105,7 +105,7 @@ class DelegatedPlaybackEngine(
     }
 
     override fun release() {
-        driver.release()
+        driver.disconnect()
         _connectionState.value = PlaybackConnectionState.DISCONNECTED
     }
 
@@ -162,5 +162,6 @@ class DelegatedPlaybackEngine(
         const val PLAYBACK_STATE_ENDED = 4
         const val MEDIA_ITEM_TRANSITION_REASON_AUTO = PlaybackOrchestrator.MEDIA_ITEM_TRANSITION_REASON_AUTO
         const val MEDIA_ITEM_TRANSITION_REASON_SEEK = 2
+        const val DEFAULT_SEEK_INCREMENT_MS = SEEK_INCREMENT_MS
     }
 }
