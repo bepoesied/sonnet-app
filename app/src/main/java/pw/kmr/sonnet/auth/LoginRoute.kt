@@ -24,7 +24,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.flow.collectLatest
 import pw.kmr.sonnet.shared.auth.LoginEffect
 import pw.kmr.sonnet.shared.auth.LoginRepository
 import pw.kmr.sonnet.shared.auth.LoginViewModel
@@ -44,11 +43,11 @@ fun LoginRoute(
     val authLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        result.data?.let { viewModel.completeLogin(it) }
+        viewModel.completeLogin(result.data)
     }
 
     LaunchedEffect(viewModel) {
-        viewModel.loginEffects.collectLatest { effect ->
+        viewModel.loginEffects.collect { effect ->
             when (effect) {
                 is LoginEffect.OpenAuthBrowser -> authLauncher.launch(effect.authData as Intent)
                 is LoginEffect.LoginCompleted -> {}

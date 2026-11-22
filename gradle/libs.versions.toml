@@ -25,6 +25,7 @@ kotlinxSerialization = "1.13.0"
 kotlinxDatetime = "0.8.0"
 ktor = "3.6.1"
 sqlite = "2.7.1"
+sqliteJdbc = "3.54.1.0"
 shimmer = "1.5.0"
 kotlinStdlib = "2.4.21"
 kotlinTest = "2.4.21"
@@ -64,6 +65,7 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "sqlite" }
+sqlite-jdbc = { group = "org.xerial", name = "sqlite-jdbc", version.ref = "sqliteJdbc" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }

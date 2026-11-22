@@ -10,10 +10,10 @@ import androidx.sqlite.execSQL
  * v1 → v2: Add isCompleted to library_items
  * v2 → v3: Add errorMessage to downloads; create downloaded_books, downloaded_chapters,
  *           playback_progress tables
- * v3 → v4: Recreate playback_progress with chapterId, chapterOffsetMillis, isCompleted
- *           columns (using temp table copy pattern)
- * v4 → v5: Add isCompleted column to playback_progress (for databases that were at v4
- *           without going through v3→v4 which already includes isCompleted)
+ * v3 → v4: Recreate playback_progress with chapterId and chapterOffsetMillis columns
+ *           (using temp table copy pattern)
+ * v4 → v5: Add isCompleted column to playback_progress (defensively checking PRAGMA table_info
+ *           so devices that previously ran an older v3→v4 migration do not crash)
  *
  * New installs get all migrations applied sequentially.
  */
@@ -83,7 +83,6 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
                 positionMillis INTEGER NOT NULL DEFAULT 0,
                 durationMillis INTEGER,
                 updatedAtEpochMillis INTEGER NOT NULL DEFAULT 0,
-                isCompleted INTEGER NOT NULL DEFAULT 0,
                 pendingSync INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
@@ -95,7 +94,6 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
                 positionMillis,
                 durationMillis,
                 updatedAtEpochMillis,
-                isCompleted,
                 pendingSync
             )
             SELECT
@@ -103,7 +101,6 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
                 positionMillis,
                 durationMillis,
                 updatedAtEpochMillis,
-                0,
                 pendingSync
             FROM playback_progress
             """.trimIndent()
@@ -115,6 +112,19 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
 
 val MIGRATION_4_5 = object : Migration(4, 5) {
     override fun migrate(connection: SQLiteConnection) {
-        connection.execSQL("ALTER TABLE playback_progress ADD COLUMN isCompleted INTEGER NOT NULL DEFAULT 0")
+        if (!connection.hasColumn(tableName = "playback_progress", columnName = "isCompleted")) {
+            connection.execSQL("ALTER TABLE playback_progress ADD COLUMN isCompleted INTEGER NOT NULL DEFAULT 0")
+        }
     }
+}
+
+private fun SQLiteConnection.hasColumn(tableName: String, columnName: String): Boolean {
+    prepare("PRAGMA table_info($tableName)").use { statement ->
+        while (statement.step()) {
+            if (statement.getText(1).equals(columnName, ignoreCase = true)) {
+                return true
+            }
+        }
+    }
+    return false
 }

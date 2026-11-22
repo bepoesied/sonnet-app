@@ -54,6 +54,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import pw.kmr.sonnet.core.ui.component.SwipeActionBox
 import pw.kmr.sonnet.core.ui.component.SwipeDirection
 import pw.kmr.sonnet.shared.library.LibraryRepository
@@ -69,9 +71,12 @@ fun LibraryRoute(
     repository: LibraryRepository,
     onOpenPlayer: (LibraryBook) -> Unit,
     onLogout: () -> Unit,
+    requiresReauth: Flow<Boolean> = flowOf(false),
     modifier: Modifier = Modifier
 ) {
-    val viewModel: LibraryViewModel = viewModel(factory = libraryViewModelFactory(repository))
+    val viewModel: LibraryViewModel = viewModel(
+        factory = libraryViewModelFactory(repository, requiresReauth)
+    )
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 

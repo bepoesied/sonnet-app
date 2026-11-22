@@ -98,6 +98,12 @@ kotlin {
             }
         }
 
+        getByName("androidHostTest") {
+            dependencies {
+                implementation(libs.sqlite.jdbc)
+            }
+        }
+
         getByName("androidDeviceTest") {
             dependencies {
                 implementation(libs.androidx.core)

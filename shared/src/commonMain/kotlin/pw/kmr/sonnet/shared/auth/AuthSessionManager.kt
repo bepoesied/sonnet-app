@@ -1,6 +1,8 @@
 package pw.kmr.sonnet.shared.auth
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -13,6 +15,7 @@ class AuthSessionManager(
     private val refreshMutex = Mutex()
 
     val currentSession: Flow<AuthSession?> = sessionStore.currentSession
+    val requiresLogin: StateFlow<Boolean> = sessionStore.requiresLogin
 
     suspend fun saveSession(session: AuthSession) {
         sessionStore.saveSession(session)
@@ -26,9 +29,17 @@ class AuthSessionManager(
 
     suspend fun loadStoredSession(): AuthSession? = sessionStore.loadStoredSession()
 
-    fun savedServerUrl(): String? = sessionStore.savedServerUrl()
+    suspend fun savedServerUrl(): String? = sessionStore.savedServerUrl()
 
-    fun requiresLogin(): Boolean = sessionStore.requiresLogin()
+    suspend fun savePendingLogin(pendingLogin: PendingLogin) {
+        sessionStore.savePendingLogin(pendingLogin)
+    }
+
+    suspend fun loadPendingLogin(): PendingLogin? = sessionStore.loadPendingLogin()
+
+    suspend fun clearPendingLogin() {
+        sessionStore.clearPendingLogin()
+    }
 
     /** Loads the persisted session only; startup must not wait for network validation. */
     suspend fun bootstrapSession() {
@@ -44,8 +55,17 @@ class AuthSessionManager(
         try {
             val user = authRemoteDataSource.me(session.serverUrl, session.accessToken)
             saveSession(session.copy(user = user))
-        } catch (_: Exception) {
-            runCatching { refreshSession(session, refreshUser = true) }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (exception: Exception) {
+            if (!authRemoteDataSource.isUnauthorizedError(exception)) return
+            try {
+                refreshSession(session, refreshUser = true)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                // Best-effort refresh; keep cached session available offline or wait for re-auth.
+            }
         }
     }
 
@@ -56,46 +76,56 @@ class AuthSessionManager(
         val session = validSessionOrThrow(notSignedInMessage)
         return try {
             request(session)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
         } catch (exception: Exception) {
             if (!authRemoteDataSource.isUnauthorizedError(exception)) throw exception
-            request(refreshSession(session))
+            request(refreshSession(session, notSignedInMessage = notSignedInMessage))
         }
     }
 
     private suspend fun validSessionOrThrow(message: String): AuthSession {
-        if (requiresLogin()) error("Sign in again before $message.")
+        if (requiresLogin.value) error("Sign in again before $message.")
         return currentSession.firstOrNull() ?: error("Sign in before $message.")
     }
 
     private suspend fun refreshSession(
         session: AuthSession,
-        refreshUser: Boolean = false
+        refreshUser: Boolean = false,
+        notSignedInMessage: String = "syncing or downloading books"
     ): AuthSession = refreshMutex.withLock {
         val latestSession = storedSession() ?: session
         if (latestSession.accessToken != session.accessToken || latestSession.refreshToken != session.refreshToken) {
             return@withLock latestSession
         }
 
-        try {
+        val refreshedSession = try {
             val refreshed = authRemoteDataSource.refresh(session.serverUrl, session.refreshToken)
-            val refreshedSession = session.copy(
+            session.copy(
                 accessToken = refreshed.accessToken,
                 refreshToken = refreshed.refreshToken
-            ).let { updated ->
-                if (refreshUser) {
-                    updated.copy(user = authRemoteDataSource.me(updated.serverUrl, updated.accessToken))
-                } else {
-                    updated
-                }
+            ).also { updated ->
+                sessionStore.saveSession(updated)
             }
-            saveSession(refreshedSession)
-            refreshedSession
+        } catch (cancellation: CancellationException) {
+            throw cancellation
         } catch (exception: Exception) {
             if (authRemoteDataSource.isAuthFailureError(exception)) {
                 sessionStore.markRequiresLogin()
-                error("Sign in again before syncing or downloading books.")
+                error("Sign in again before $notSignedInMessage.")
             }
             throw exception
+        }
+
+        if (!refreshUser) return@withLock refreshedSession
+
+        return@withLock try {
+            val user = authRemoteDataSource.me(refreshedSession.serverUrl, refreshedSession.accessToken)
+            refreshedSession.copy(user = user).also { sessionStore.saveSession(it) }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            refreshedSession
         }
     }
 }

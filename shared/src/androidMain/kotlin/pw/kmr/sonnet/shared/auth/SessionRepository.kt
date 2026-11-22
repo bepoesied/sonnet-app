@@ -7,7 +7,10 @@ import android.security.keystore.KeyProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import pw.kmr.sonnet.shared.model.AuthSession
 import pw.kmr.sonnet.shared.model.SonnetUser
 import java.security.KeyStore
@@ -28,6 +31,7 @@ class SessionRepository(private val context: Context) : SessionStore {
         const val USER_NAME = "user_name"
         const val USER_AVATAR_URL = "user_avatar_url"
         const val REQUIRES_LOGIN = "requires_login"
+        const val PENDING_LOGIN = "pending_login"
     }
 
     private val preferences: SharedPreferences by lazy {
@@ -36,9 +40,13 @@ class SessionRepository(private val context: Context) : SessionStore {
 
     private val tokenCrypto: TokenCrypto by lazy { TokenCrypto() }
 
+    private val json = Json { ignoreUnknownKeys = true }
+
     private val sessionState = MutableStateFlow<AuthSession?>(null)
+    private val requiresLoginState = MutableStateFlow(false)
 
     override val currentSession: Flow<AuthSession?> = sessionState
+    override val requiresLogin: StateFlow<Boolean> = requiresLoginState.asStateFlow()
 
     override suspend fun saveSession(session: AuthSession) {
         withContext(Dispatchers.IO) {
@@ -50,20 +58,21 @@ class SessionRepository(private val context: Context) : SessionStore {
                 putString(USER_NAME, session.user.name)
                 putString(USER_AVATAR_URL, session.user.avatarUrl)
                 putBoolean(REQUIRES_LOGIN, false)
-                apply()
+                commit()
             }
         }
+        requiresLoginState.value = false
         sessionState.value = session
     }
 
     override suspend fun markRequiresLogin() {
-        withContext(Dispatchers.IO) {
-            preferences.edit().putBoolean(REQUIRES_LOGIN, true).apply()
+        val session = withContext(Dispatchers.IO) {
+            preferences.edit().putBoolean(REQUIRES_LOGIN, true).commit()
+            readSession()
         }
-        sessionState.value = storedSession()
+        requiresLoginState.value = true
+        sessionState.value = session
     }
-
-    override fun requiresLogin(): Boolean = preferences.getBoolean(REQUIRES_LOGIN, false)
 
     override suspend fun clearSession(retainServerUrl: Boolean) {
         withContext(Dispatchers.IO) {
@@ -73,22 +82,47 @@ class SessionRepository(private val context: Context) : SessionStore {
                 if (retainServerUrl && !serverUrl.isNullOrBlank()) {
                     putString(SERVER_URL, serverUrl)
                 }
-                apply()
+                commit()
             }
         }
+        requiresLoginState.value = false
         sessionState.value = null
     }
 
-    override fun savedServerUrl(): String? = preferences.getString(SERVER_URL, null)
+    override suspend fun savedServerUrl(): String? = withContext(Dispatchers.IO) {
+        preferences.getString(SERVER_URL, null)
+    }
 
     override suspend fun storedSession(): AuthSession? = withContext(Dispatchers.IO) {
         readSession()
     }
 
-    override suspend fun loadStoredSession(): AuthSession? = withContext(Dispatchers.IO) {
-        readSession()
-    }.also { session ->
+    override suspend fun loadStoredSession(): AuthSession? {
+        val (session, needsLogin) = withContext(Dispatchers.IO) {
+            readSession() to preferences.getBoolean(REQUIRES_LOGIN, false)
+        }
+        requiresLoginState.value = needsLogin
         sessionState.value = session
+        return session
+    }
+
+    override suspend fun savePendingLogin(pendingLogin: PendingLogin) {
+        withContext(Dispatchers.IO) {
+            preferences.edit()
+                .putString(PENDING_LOGIN, json.encodeToString(pendingLogin))
+                .commit()
+        }
+    }
+
+    override suspend fun loadPendingLogin(): PendingLogin? = withContext(Dispatchers.IO) {
+        val encoded = preferences.getString(PENDING_LOGIN, null) ?: return@withContext null
+        runCatching { json.decodeFromString<PendingLogin>(encoded) }.getOrNull()
+    }
+
+    override suspend fun clearPendingLogin() {
+        withContext(Dispatchers.IO) {
+            preferences.edit().remove(PENDING_LOGIN).commit()
+        }
     }
 
     private fun readSession(): AuthSession? {

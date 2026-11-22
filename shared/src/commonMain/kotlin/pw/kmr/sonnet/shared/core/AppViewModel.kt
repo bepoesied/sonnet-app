@@ -25,8 +25,19 @@ class AppViewModel(
         initialValue = null
     )
 
-    val uiState: StateFlow<AppUiState> = combine(bootstrapComplete, session) { complete, currentSession ->
-        if (complete) AppUiState.Ready(currentSession) else AppUiState.Loading
+    val uiState: StateFlow<AppUiState> = combine(
+        bootstrapComplete,
+        session,
+        authSessionManager.requiresLogin
+    ) { complete, currentSession, requiresReauth ->
+        if (complete) {
+            AppUiState.Ready(
+                session = currentSession,
+                requiresReauth = requiresReauth
+            )
+        } else {
+            AppUiState.Loading
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -68,5 +79,8 @@ interface AppViewModelRepository {
 sealed interface AppUiState {
     data object Loading : AppUiState
 
-    data class Ready(val session: AuthSession?) : AppUiState
+    data class Ready(
+        val session: AuthSession?,
+        val requiresReauth: Boolean = false
+    ) : AppUiState
 }

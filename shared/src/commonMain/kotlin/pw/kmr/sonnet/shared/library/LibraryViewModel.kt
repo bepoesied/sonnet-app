@@ -7,12 +7,13 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -22,7 +23,8 @@ import pw.kmr.sonnet.shared.model.DownloadStatus
 import pw.kmr.sonnet.shared.model.LibraryBook
 
 class LibraryViewModel(
-    private val repository: LibraryViewModelRepository
+    private val repository: LibraryViewModelRepository,
+    private val requiresReauth: Flow<Boolean> = flowOf(false)
 ) : ViewModel() {
     private val refreshState = MutableStateFlow(RefreshState())
     private val downloadJobs = mutableMapOf<String, Job>()
@@ -40,8 +42,8 @@ class LibraryViewModel(
         )
 
     val uiState: StateFlow<LibraryUiState> = combine(
-        localLibrary, refreshState, searchQuery
-    ) { local, refresh, query ->
+        localLibrary, refreshState, searchQuery, requiresReauth
+    ) { local, refresh, query, needsReauth ->
         val filtered = if (query.isBlank()) local.books
         else {
             val lowerQuery = query.lowercase()
@@ -56,7 +58,8 @@ class LibraryViewModel(
             lastRefreshFailed = refresh.lastErrorMessage != null,
             errorMessage = refresh.lastErrorMessage,
             initialLoadComplete = local.hasLoaded,
-            searchQuery = query
+            searchQuery = query,
+            requiresReauth = needsReauth
         )
     }.stateIn(
         scope = viewModelScope,
@@ -196,10 +199,11 @@ class LibraryViewModel(
 }
 
 fun libraryViewModelFactory(
-    repository: LibraryViewModelRepository
+    repository: LibraryViewModelRepository,
+    requiresReauth: Flow<Boolean> = flowOf(false)
 ): ViewModelProvider.Factory = viewModelFactory {
     initializer {
-        LibraryViewModel(repository)
+        LibraryViewModel(repository, requiresReauth)
     }
 }
 
@@ -209,7 +213,8 @@ data class LibraryUiState(
     val lastRefreshFailed: Boolean = false,
     val errorMessage: String? = null,
     val initialLoadComplete: Boolean = false,
-    val searchQuery: String = ""
+    val searchQuery: String = "",
+    val requiresReauth: Boolean = false
 )
 
 private data class RefreshState(

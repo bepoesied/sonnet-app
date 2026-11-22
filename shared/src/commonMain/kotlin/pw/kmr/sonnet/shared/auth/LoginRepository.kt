@@ -1,6 +1,7 @@
 package pw.kmr.sonnet.shared.auth
 
 import io.ktor.http.Url
+import kotlinx.coroutines.CancellationException
 import pw.kmr.sonnet.shared.core.AppViewModelRepository
 import pw.kmr.sonnet.shared.data.preferences.AppSettingsRepository
 import pw.kmr.sonnet.shared.library.LocalLibraryCleaner
@@ -57,15 +58,29 @@ class LoginRepository(
     override suspend fun logout() {
         val session = authSessionManager.storedSession()
         if (session != null) {
-            runCatching {
+            try {
                 authApiClient.logout(session.serverUrl, session.accessToken, session.refreshToken)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                // Best-effort remote logout; always clear local state afterward.
             }
         }
         localLibraryCleaner.clearLocalLibrary()
         authSessionManager.clearSession(retainServerUrl = true)
     }
 
-    fun savedServerUrl(): String? = authSessionManager.savedServerUrl()
+    suspend fun savedServerUrl(): String? = authSessionManager.savedServerUrl()
+
+    suspend fun savePendingLogin(pendingLogin: PendingLogin) {
+        authSessionManager.savePendingLogin(pendingLogin)
+    }
+
+    suspend fun loadPendingLogin(): PendingLogin? = authSessionManager.loadPendingLogin()
+
+    suspend fun clearPendingLogin() {
+        authSessionManager.clearPendingLogin()
+    }
 
     internal fun normalizeServerUrl(serverUrl: String): String {
         val trimmed = serverUrl.trim().trimEnd('/')

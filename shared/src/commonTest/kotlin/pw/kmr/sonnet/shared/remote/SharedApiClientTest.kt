@@ -13,6 +13,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class SharedApiClientTest {
     @Test
@@ -100,5 +102,118 @@ class SharedApiClientTest {
         }
 
         assertEquals(401, exception.statusCode)
+        assertEquals("{\"error\":\"Unauthorized\"}", exception.message)
+    }
+
+    @Test
+    fun `error status codes map to api exception across auth and books clients`() = runTest {
+        val statusCodes = listOf(
+            HttpStatusCode.Unauthorized to 401,
+            HttpStatusCode.Forbidden to 403,
+            HttpStatusCode.UnprocessableEntity to 422,
+            HttpStatusCode.InternalServerError to 500
+        )
+
+        for ((httpStatus, expectedCode) in statusCodes) {
+            val body = "{\"status\":$expectedCode}"
+            val apiClient = SonnetApiClient(
+                MockEngine {
+                    respond(
+                        content = body,
+                        status = httpStatus,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    )
+                }
+            )
+            val authApiClient = AuthApiClient(apiClient)
+            val booksApiClient = BooksApiClient(apiClient)
+
+            val refreshException = assertFailsWith<ApiException> {
+                authApiClient.refresh("https://example.test", "refresh-token")
+            }
+            assertEquals(expectedCode, refreshException.statusCode)
+            assertEquals(body, refreshException.message)
+
+            val booksException = assertFailsWith<ApiException> {
+                booksApiClient.books("https://example.test", "access-token")
+            }
+            assertEquals(expectedCode, booksException.statusCode)
+            assertEquals(body, booksException.message)
+
+            val updateProgressException = assertFailsWith<ApiException> {
+                booksApiClient.updateProgress(
+                    serverUrl = "https://example.test",
+                    accessToken = "access-token",
+                    bookId = "1",
+                    chapterId = "2",
+                    offsetMs = 500L,
+                    updatedAtEpochMillis = 1_000L
+                )
+            }
+            assertEquals(expectedCode, updateProgressException.statusCode)
+            assertEquals(body, updateProgressException.message)
+
+            val completeException = assertFailsWith<ApiException> {
+                booksApiClient.markComplete("https://example.test", "access-token", "1")
+            }
+            assertEquals(expectedCode, completeException.statusCode)
+            assertEquals(body, completeException.message)
+        }
+    }
+
+    @Test
+    fun `logout tolerates 401 but throws api exception for server errors`() = runTest {
+        val unauthorizedAuthClient = AuthApiClient(
+            SonnetApiClient(
+                MockEngine {
+                    respond(
+                        content = "{\"error\":\"token expired\"}",
+                        status = HttpStatusCode.Unauthorized,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    )
+                }
+            )
+        )
+
+        // Should succeed without throwing when backend returns 401.
+        unauthorizedAuthClient.logout("https://example.test", "expired-access", "expired-refresh")
+
+        val serverErrorAuthClient = AuthApiClient(
+            SonnetApiClient(
+                MockEngine {
+                    respond(
+                        content = "{\"error\":\"boom\"}",
+                        status = HttpStatusCode.InternalServerError,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    )
+                }
+            )
+        )
+
+        val exception = assertFailsWith<ApiException> {
+            serverErrorAuthClient.logout("https://example.test", "access", "refresh")
+        }
+        assertEquals(500, exception.statusCode)
+    }
+
+    @Test
+    fun `auth error classifiers distinguish unauthorized, auth failure, and transient errors`() {
+        val authApiClient = AuthApiClient(
+            SonnetApiClient(MockEngine { respond(status = HttpStatusCode.OK, content = "") })
+        )
+
+        assertTrue(authApiClient.isUnauthorizedError(ApiException(401, "unauthorized")))
+        assertFalse(authApiClient.isUnauthorizedError(ApiException(403, "forbidden")))
+        assertFalse(authApiClient.isUnauthorizedError(ApiException(422, "unprocessable")))
+        assertFalse(authApiClient.isUnauthorizedError(ApiException(500, "server error")))
+        assertFalse(authApiClient.isUnauthorizedError(IllegalStateException("network")))
+
+        assertTrue(authApiClient.isAuthFailureError(ApiException(400, "bad request")))
+        assertTrue(authApiClient.isAuthFailureError(ApiException(401, "unauthorized")))
+        assertTrue(authApiClient.isAuthFailureError(ApiException(403, "forbidden")))
+        assertTrue(authApiClient.isAuthFailureError(ApiException(422, "unprocessable")))
+        assertFalse(authApiClient.isAuthFailureError(ApiException(404, "not found")))
+        assertFalse(authApiClient.isAuthFailureError(ApiException(500, "server error")))
+        assertFalse(authApiClient.isAuthFailureError(IllegalStateException("offline")))
     }
 }
