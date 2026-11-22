@@ -20,6 +20,8 @@ class PlayerViewModel(
 
     fun load() {
         if (loadJob?.isActive == true) return
+        val current = orchestrator.state.value
+        if (current.bookId == bookId && current.canPlay) return
         loadJob = viewModelScope.launch { orchestrator.load(bookId) }
     }
 

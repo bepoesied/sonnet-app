@@ -7,10 +7,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -18,14 +24,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import pw.kmr.sonnet.shared.auth.LoginEffect
 import pw.kmr.sonnet.shared.auth.LoginRepository
+import pw.kmr.sonnet.shared.auth.LoginUiState
 import pw.kmr.sonnet.shared.auth.LoginViewModel
 import pw.kmr.sonnet.shared.auth.PlatformAuthProvider
 import pw.kmr.sonnet.shared.auth.loginViewModelFactory
@@ -34,12 +46,15 @@ import pw.kmr.sonnet.shared.auth.loginViewModelFactory
 fun LoginRoute(
     loginRepository: LoginRepository,
     platformAuthProvider: PlatformAuthProvider,
+    onLoginCompleted: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val viewModel: LoginViewModel = viewModel(
-        factory = loginViewModelFactory(loginRepository, platformAuthProvider)
-    )
+    val factory = remember(loginRepository, platformAuthProvider) {
+        loginViewModelFactory(loginRepository, platformAuthProvider)
+    }
+    val viewModel: LoginViewModel = viewModel(factory = factory)
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentOnLoginCompleted by rememberUpdatedState(onLoginCompleted)
     val authLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -50,16 +65,35 @@ fun LoginRoute(
         viewModel.loginEffects.collect { effect ->
             when (effect) {
                 is LoginEffect.OpenAuthBrowser -> authLauncher.launch(effect.authData as Intent)
-                is LoginEffect.LoginCompleted -> {}
+                is LoginEffect.LoginCompleted -> currentOnLoginCompleted()
             }
         }
     }
+
+    LoginScreen(
+        uiState = uiState,
+        onServerUrlChange = viewModel::onServerUrlChange,
+        onStartLogin = viewModel::startLogin,
+        modifier = modifier
+    )
+}
+
+@Composable
+internal fun LoginScreen(
+    uiState: LoginUiState,
+    onServerUrlChange: (String) -> Unit,
+    onStartLogin: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val canSubmit = !uiState.isLoading && uiState.serverUrl.isNotBlank()
 
     Scaffold(modifier = modifier.fillMaxSize()) { contentPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(contentPadding)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.Start
@@ -75,14 +109,20 @@ fun LoginRoute(
             )
             OutlinedTextField(
                 value = uiState.serverUrl,
-                onValueChange = viewModel::onServerUrlChange,
+                onValueChange = onServerUrlChange,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 24.dp),
                 enabled = !uiState.isLoading,
                 label = { Text("Server URL") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Go
+                ),
+                keyboardActions = KeyboardActions(
+                    onGo = { if (canSubmit) onStartLogin() }
+                ),
                 placeholder = { Text("https://sonnet.example.com") }
             )
             if (uiState.errorMessage != null) {
@@ -94,12 +134,18 @@ fun LoginRoute(
                 )
             }
             Button(
-                onClick = viewModel::startLogin,
-                enabled = !uiState.isLoading && uiState.serverUrl.isNotBlank(),
+                onClick = onStartLogin,
+                enabled = canSubmit,
                 modifier = Modifier.padding(top = 24.dp)
             ) {
                 if (uiState.isLoading) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .semantics { contentDescription = "Signing in" },
+                        strokeWidth = 2.dp,
+                        color = LocalContentColor.current
+                    )
                 } else {
                     Text("Sign in")
                 }

@@ -20,13 +20,89 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import pw.kmr.sonnet.core.ui.component.BookCover
+import pw.kmr.sonnet.shared.playback.PlaybackOrchestrator
 import pw.kmr.sonnet.shared.playback.PlayerUiState
+
+private data class MiniPlayerMetadata(
+    val bookId: String?,
+    val title: String,
+    val author: String?,
+    val coverFilePath: String?,
+    val currentChapterTitle: String,
+    val isPlaying: Boolean,
+    val canPlay: Boolean
+)
+
+private fun PlayerUiState.toMiniPlayerMetadata(): MiniPlayerMetadata = MiniPlayerMetadata(
+    bookId = bookId,
+    title = title,
+    author = author,
+    coverFilePath = coverFilePath,
+    currentChapterTitle = currentChapterTitle,
+    isPlaying = isPlaying,
+    canPlay = canPlay
+)
+
+@Composable
+internal fun MiniPlayerHost(
+    playbackOrchestrator: PlaybackOrchestrator,
+    onOpenPlayer: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    val metadataFlow = remember(playbackOrchestrator) {
+        playbackOrchestrator.state
+            .map { it.toMiniPlayerMetadata() }
+            .distinctUntilChanged()
+    }
+    val metadata by metadataFlow.collectAsStateWithLifecycle(
+        initialValue = playbackOrchestrator.state.value.toMiniPlayerMetadata()
+    )
+    val bookId = metadata.bookId ?: return
+
+    MiniPlayerContent(
+        metadata = metadata,
+        onClick = { onOpenPlayer(bookId) },
+        onPlayPause = playbackOrchestrator::playPause,
+        enabled = enabled,
+        modifier = modifier,
+        progressBar = {
+            MiniPlayerProgress(stateFlow = playbackOrchestrator.state)
+        }
+    )
+}
+
+@Composable
+private fun MiniPlayerProgress(stateFlow: StateFlow<PlayerUiState>) {
+    val progressFlow = remember(stateFlow) {
+        stateFlow
+            .map { state ->
+                (state.currentChapterPositionMs.toFloat() /
+                    state.currentChapterDurationMs.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+            }
+            .distinctUntilChanged()
+    }
+    val progress by progressFlow.collectAsStateWithLifecycle(
+        initialValue = (stateFlow.value.currentChapterPositionMs.toFloat() /
+            stateFlow.value.currentChapterDurationMs.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+    )
+    LinearProgressIndicator(
+        progress = { progress },
+        modifier = Modifier.fillMaxWidth()
+    )
+}
 
 @Composable
 internal fun MiniPlayer(
@@ -36,16 +112,13 @@ internal fun MiniPlayer(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    Surface(
+    MiniPlayerContent(
+        metadata = uiState.toMiniPlayerMetadata(),
         onClick = onClick,
+        onPlayPause = onPlayPause,
         enabled = enabled,
-        tonalElevation = 6.dp,
-        shadowElevation = 8.dp,
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-    ) {
-        Column {
+        modifier = modifier,
+        progressBar = {
             LinearProgressIndicator(
                 progress = {
                     (uiState.currentChapterPositionMs.toFloat() /
@@ -53,6 +126,28 @@ internal fun MiniPlayer(
                 },
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+    )
+}
+
+@Composable
+private fun MiniPlayerContent(
+    metadata: MiniPlayerMetadata,
+    onClick: () -> Unit,
+    onPlayPause: () -> Unit,
+    enabled: Boolean,
+    progressBar: @Composable () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        tonalElevation = 6.dp,
+        shadowElevation = 8.dp,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.navigationBarsPadding()) {
+            progressBar()
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -61,23 +156,23 @@ internal fun MiniPlayer(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 BookCover(
-                    bookId = uiState.bookId,
-                    title = uiState.title,
-                    localCoverPath = uiState.coverFilePath,
+                    bookId = metadata.bookId,
+                    title = metadata.title,
+                    localCoverPath = metadata.coverFilePath,
                     crossfade = false,
                     modifier = Modifier.size(56.dp)
                 )
                 Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = uiState.title.ifBlank { "Loading book" },
+                        text = metadata.title.ifBlank { "Loading book" },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = uiState.currentChapterTitle.ifBlank { uiState.author ?: "Preparing chapters" },
+                        text = metadata.currentChapterTitle.ifBlank { metadata.author ?: "Preparing chapters" },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -86,11 +181,11 @@ internal fun MiniPlayer(
                 }
                 IconButton(
                     onClick = onPlayPause,
-                    enabled = enabled && uiState.canPlay
+                    enabled = enabled && metadata.canPlay
                 ) {
                     Icon(
-                        imageVector = if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (uiState.isPlaying) "Pause" else "Play"
+                        imageVector = if (metadata.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (metadata.isPlaying) "Pause" else "Play"
                     )
                 }
             }

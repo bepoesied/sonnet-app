@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -13,8 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -26,16 +25,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.lifecycle.ViewModelStore
-import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberDecoratedNavEntries
@@ -44,6 +41,8 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import pw.kmr.sonnet.auth.LoginRoute
 import pw.kmr.sonnet.core.AppContainer
@@ -71,6 +70,7 @@ fun SonnetApp(
         AppUiState.Loading -> LoadingApp(modifier = modifier)
         is AppUiState.Ready -> AppNavHost(
             isAuthenticated = uiState.session != null,
+            requiresReauth = uiState.requiresReauth,
             appContainer = appContainer,
             onLogout = onLogout,
             modifier = modifier
@@ -81,6 +81,7 @@ fun SonnetApp(
 @Composable
 private fun AppNavHost(
     isAuthenticated: Boolean,
+    requiresReauth: Boolean,
     appContainer: AppContainer,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
@@ -89,14 +90,23 @@ private fun AppNavHost(
     val backStack = rememberNavBackStack(startKey)
     var wasAuthenticated by remember { mutableStateOf(isAuthenticated) }
 
-    LaunchedEffect(isAuthenticated) {
-        val targetKey = if (isAuthenticated) LibraryKey else LoginKey
-        if (backStack.lastOrNull() != targetKey) {
+    LaunchedEffect(isAuthenticated, requiresReauth) {
+        if (!isAuthenticated) {
+            if (backStack.size != 1 || backStack.lastOrNull() != LoginKey) {
+                backStack.clear()
+                backStack.add(LoginKey)
+            }
+            if (wasAuthenticated) {
+                appContainer.stopPlaybackIfInitialized()
+            }
+        } else if (!requiresReauth) {
+            if (backStack.size != 1 || backStack.lastOrNull() != LibraryKey) {
+                backStack.clear()
+                backStack.add(LibraryKey)
+            }
+        } else if (backStack.size == 1 && backStack.lastOrNull() == LoginKey) {
             backStack.clear()
-            backStack.add(targetKey)
-        }
-        if (wasAuthenticated && !isAuthenticated) {
-            appContainer.stopPlaybackIfInitialized()
+            backStack.add(LibraryKey)
         }
         wasAuthenticated = isAuthenticated
     }
@@ -105,12 +115,25 @@ private fun AppNavHost(
         entry<LoginKey> {
             LoginRoute(
                 loginRepository = appContainer.loginRepository,
-                platformAuthProvider = appContainer.platformAuthProvider
+                platformAuthProvider = appContainer.platformAuthProvider,
+                onLoginCompleted = {
+                    if (backStack.size > 1) {
+                        backStack.removeLastOrNull()
+                    }
+                }
             )
         }
         entry<LibraryKey> {
             if (isAuthenticated) {
-                LibraryWithPlayer(appContainer = appContainer, onLogout = onLogout)
+                LibraryWithPlayer(
+                    appContainer = appContainer,
+                    onLogout = onLogout,
+                    onReauthenticate = {
+                        if (backStack.lastOrNull() != LoginKey) {
+                            backStack.add(LoginKey)
+                        }
+                    }
+                )
             }
         }
     }
@@ -124,11 +147,16 @@ private fun AppNavHost(
         entryProvider = provider
     )
 
-    // Auth has exactly one root entry. The player is not a Nav3 destination: keeping the library
-    // composed underneath it prevents a second back owner and any predictive-pop scene seam.
+    // Auth has one root entry (with optional stacked LoginKey for in-place re-auth). The player
+    // is not a Nav3 destination: keeping the library composed underneath it prevents a second back
+    // owner and any predictive-pop scene seam.
     NavDisplay(
         entries = entries,
-        onBack = { backStack.removeLastOrNull() },
+        onBack = {
+            if (backStack.size > 1) {
+                backStack.removeLastOrNull()
+            }
+        },
         modifier = modifier.fillMaxSize()
     )
 }
@@ -145,15 +173,29 @@ private val playerDestinationSaver = listSaver<PlayerDestination?, Any>(
 )
 
 @Composable
-private fun LibraryWithPlayer(appContainer: AppContainer, onLogout: () -> Unit) {
-    val playerState by appContainer.playbackOrchestrator.state.collectAsStateWithLifecycle()
+private fun LibraryWithPlayer(
+    appContainer: AppContainer,
+    onLogout: () -> Unit,
+    onReauthenticate: () -> Unit
+) {
+    // Observe only whether a book is active so 1 Hz playback ticks never recompose LibraryWithPlayer
+    // or LibraryRoute.
+    val hasActiveBookFlow = remember(appContainer.playbackOrchestrator) {
+        appContainer.playbackOrchestrator.state
+            .map { it.bookId != null }
+            .distinctUntilChanged()
+    }
+    val hasActiveBook by hasActiveBookFlow.collectAsStateWithLifecycle(
+        initialValue = appContainer.playbackOrchestrator.state.value.bookId != null
+    )
+
     var playerDestination by rememberSaveable(stateSaver = playerDestinationSaver) {
         mutableStateOf<PlayerDestination?>(null)
     }
     var dialogVisible by remember { mutableStateOf(false) }
     var isClosing by remember { mutableStateOf(false) }
     var closeJob by remember { mutableStateOf<Job?>(null) }
-    val expansion = remember { Animatable(0f) }
+    val expansion = remember { Animatable(if (playerDestination != null) 1f else 0f) }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -185,7 +227,7 @@ private fun LibraryWithPlayer(appContainer: AppContainer, onLogout: () -> Unit) 
     }
 
     LaunchedEffect(playerDestination, isClosing) {
-        if (playerDestination != null && !isClosing) {
+        if (playerDestination != null && !isClosing && expansion.value < 1f) {
             expansion.animateTo(1f, animationSpec = tween(360))
         }
     }
@@ -232,13 +274,12 @@ private fun LibraryWithPlayer(appContainer: AppContainer, onLogout: () -> Unit) 
             .onSizeChanged { containerHeightPx = it.height },
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
-            if (playerState.bookId != null) {
-                MiniPlayer(
-                    uiState = playerState,
-                    onClick = {
-                        playerState.bookId?.let { openPlayer(PlayerDestination(it, isDownloaded = true)) }
+            if (hasActiveBook) {
+                MiniPlayerHost(
+                    playbackOrchestrator = appContainer.playbackOrchestrator,
+                    onOpenPlayer = { bookId ->
+                        openPlayer(PlayerDestination(bookId, isDownloaded = true))
                     },
-                    onPlayPause = appContainer.playbackOrchestrator::playPause,
                     enabled = playerDestination == null,
                     modifier = Modifier
                         .onSizeChanged { miniPlayerHeightPx = it.height }
@@ -253,7 +294,9 @@ private fun LibraryWithPlayer(appContainer: AppContainer, onLogout: () -> Unit) 
                 repository = appContainer.libraryRepository,
                 onOpenPlayer = { book -> openPlayer(PlayerDestination(book.id, book.isDownloaded)) },
                 onLogout = onLogout,
+                onReauthenticate = onReauthenticate,
                 requiresReauth = appContainer.authSessionManager.requiresLogin,
+                isOnline = appContainer.networkMonitor.isOnline,
                 downloadScheduler = appContainer.bookDownloadScheduler,
                 modifier = Modifier
                     .fillMaxSize()
@@ -267,38 +310,32 @@ private fun LibraryWithPlayer(appContainer: AppContainer, onLogout: () -> Unit) 
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = expansion.value * 0.12f))
-                        .clickable(onClick = {})
-                )
-                val barHeightPx = if (playerState.bookId != null) miniPlayerHeightPx else 0
-                val sheetTravelPx = (containerHeightPx - barHeightPx).coerceAtLeast(0)
-                val playerViewModelStore = remember { ViewModelStore() }
-                DisposableEffect(playerViewModelStore) {
-                    onDispose { playerViewModelStore.clear() }
-                }
-                CompositionLocalProvider(
-                    LocalViewModelStoreOwner provides remember(playerViewModelStore) {
-                        object : ViewModelStoreOwner {
-                            override val viewModelStore = playerViewModelStore
+                        .drawBehind {
+                            drawRect(Color.Black.copy(alpha = expansion.value * 0.12f))
                         }
-                    }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                translationY = sheetTravelPx * (1f - expansion.value)
-                            }
-                            .background(MaterialTheme.colorScheme.surface)
-                    ) {
-                        PlayerRoute(
-                            bookId = destination.bookId,
-                            isDownloaded = destination.isDownloaded,
-                            playbackOrchestrator = appContainer.playbackOrchestrator,
-                            onBack = ::closePlayer,
-                            onDialogVisibilityChange = { dialogVisible = it }
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {}
                         )
-                    }
+                )
+                val barHeightPx = if (hasActiveBook) miniPlayerHeightPx else 0
+                val sheetTravelPx = (containerHeightPx - barHeightPx).coerceAtLeast(0)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationY = sheetTravelPx * (1f - expansion.value)
+                        }
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                    PlayerRoute(
+                        bookId = destination.bookId,
+                        isDownloaded = destination.isDownloaded,
+                        playbackOrchestrator = appContainer.playbackOrchestrator,
+                        onBack = ::closePlayer,
+                        onDialogVisibilityChange = { dialogVisible = it }
+                    )
                 }
             }
         }

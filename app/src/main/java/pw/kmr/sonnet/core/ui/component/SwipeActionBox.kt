@@ -1,26 +1,52 @@
 package pw.kmr.sonnet.core.ui.component
 
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.AnchoredDraggableDefaults
+import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DraggableAnchors
 import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.anchoredDraggable
+import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+
+private enum class SwipeAnchor {
+    Start,
+    Center,
+    End
+}
+
+private fun SwipeDirection?.toAnchor(): SwipeAnchor = when (this) {
+    SwipeDirection.StartToEnd -> SwipeAnchor.Start
+    SwipeDirection.EndToStart -> SwipeAnchor.End
+    null -> SwipeAnchor.Center
+}
+
+private fun SwipeAnchor.toSwipeDirection(): SwipeDirection? = when (this) {
+    SwipeAnchor.Start -> SwipeDirection.StartToEnd
+    SwipeAnchor.End -> SwipeDirection.EndToStart
+    SwipeAnchor.Center -> null
+}
 
 @Composable
 fun SwipeActionBox(
@@ -29,48 +55,81 @@ fun SwipeActionBox(
     modifier: Modifier = Modifier,
     positionalThreshold: Dp = 48.dp,
     actionWidth: Dp = 96.dp,
-    dragDeadZone: Dp = 16.dp,
     startBackgroundContent: (@Composable BoxScope.() -> Unit)? = null,
     endBackgroundContent: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
     val density = LocalDensity.current
-    val scope = rememberCoroutineScope()
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val actionWidthPx = with(density) { actionWidth.toPx() }
     val thresholdPx = with(density) { positionalThreshold.toPx() }
-    val dragDeadZonePx = with(density) { dragDeadZone.toPx() }
+    val hasStartAction = startBackgroundContent != null
+    val hasEndAction = endBackgroundContent != null
 
-    var offsetPx by remember(revealedDirection) { mutableFloatStateOf(0f) }
-    var pendingDragPx by remember(revealedDirection) { mutableFloatStateOf(0f) }
-
-    LaunchedEffect(revealedDirection, actionWidthPx) {
-        val targetOffset = when (revealedDirection) {
-            SwipeDirection.StartToEnd -> actionWidthPx
-            SwipeDirection.EndToStart -> -actionWidthPx
-            null -> 0f
-        }
-        if (offsetPx != targetOffset) {
-            offsetPx = targetOffset
+    val anchors = remember(actionWidthPx, hasStartAction, hasEndAction) {
+        DraggableAnchors {
+            SwipeAnchor.Center at 0f
+            if (hasStartAction) SwipeAnchor.Start at actionWidthPx
+            if (hasEndAction) SwipeAnchor.End at -actionWidthPx
         }
     }
 
-    fun settle(direction: SwipeDirection?) {
-        scope.launch {
-            offsetPx = when (direction) {
-                SwipeDirection.StartToEnd -> actionWidthPx
-                SwipeDirection.EndToStart -> -actionWidthPx
-                null -> 0f
+    val state = remember {
+        AnchoredDraggableState(
+            initialValue = revealedDirection.toAnchor(),
+            anchors = anchors
+        )
+    }
+
+    SideEffect {
+        state.updateAnchors(anchors)
+    }
+
+    val currentRevealedDirection by rememberUpdatedState(revealedDirection)
+    val currentOnRevealedChange by rememberUpdatedState(onRevealedChange)
+
+    val targetAnchor = revealedDirection.toAnchor()
+    LaunchedEffect(targetAnchor) {
+        if (state.settledValue != targetAnchor) {
+            state.animateTo(targetAnchor)
+        }
+    }
+
+    LaunchedEffect(state) {
+        snapshotFlow { state.settledValue }
+            .distinctUntilChanged()
+            .collect { settled ->
+                val direction = settled.toSwipeDirection()
+                if (direction != currentRevealedDirection) {
+                    currentOnRevealedChange(direction)
+                }
             }
-        }
     }
 
-    Box(modifier = modifier.fillMaxWidth()) {
-        if (offsetPx > 0f && startBackgroundContent != null) {
+    val flingBehavior = AnchoredDraggableDefaults.flingBehavior(
+        state = state,
+        positionalThreshold = { _ -> thresholdPx },
+        animationSpec = spring()
+    )
+
+    val showStartBackground by remember(state) {
+        derivedStateOf { (state.offset.takeUnless { it.isNaN() } ?: 0f) > 0f }
+    }
+    val showEndBackground by remember(state) {
+        derivedStateOf { (state.offset.takeUnless { it.isNaN() } ?: 0f) < 0f }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clipToBounds()
+    ) {
+        if (showStartBackground && startBackgroundContent != null) {
             Box(modifier = Modifier.matchParentSize()) {
                 startBackgroundContent()
             }
         }
-        if (offsetPx < 0f && endBackgroundContent != null) {
+        if (showEndBackground && endBackgroundContent != null) {
             Box(modifier = Modifier.matchParentSize()) {
                 endBackgroundContent()
             }
@@ -79,36 +138,16 @@ fun SwipeActionBox(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .offset { IntOffset(x = offsetPx.roundToInt(), y = 0) }
-                .draggable(
-                    state = rememberDraggableState { delta ->
-                        if (revealedDirection == null && offsetPx == 0f) {
-                            pendingDragPx += delta
-                            offsetPx = if (pendingDragPx > 0f && startBackgroundContent != null) {
-                                (pendingDragPx - dragDeadZonePx).coerceIn(0f, actionWidthPx)
-                            } else if (pendingDragPx < 0f && endBackgroundContent != null) {
-                                (pendingDragPx + dragDeadZonePx).coerceIn(-actionWidthPx, 0f)
-                            } else {
-                                0f
-                            }
-                        } else {
-                            offsetPx = (offsetPx + delta).coerceIn(
-                                minimumValue = if (endBackgroundContent == null) 0f else -actionWidthPx,
-                                maximumValue = if (startBackgroundContent == null) 0f else actionWidthPx
-                            )
-                        }
-                    },
+                .offset {
+                    val currentOffset = state.offset.takeUnless { it.isNaN() } ?: 0f
+                    IntOffset(x = currentOffset.roundToInt(), y = 0)
+                }
+                .anchoredDraggable(
+                    state = state,
+                    reverseDirection = isRtl,
                     orientation = Orientation.Horizontal,
-                    onDragStopped = {
-                        pendingDragPx = 0f
-                        val direction = when {
-                            offsetPx >= thresholdPx -> SwipeDirection.StartToEnd
-                            offsetPx <= -thresholdPx -> SwipeDirection.EndToStart
-                            else -> null
-                        }
-                        onRevealedChange(direction)
-                        settle(direction)
-                    }
+                    enabled = hasStartAction || hasEndAction,
+                    flingBehavior = flingBehavior
                 ),
             content = content
         )

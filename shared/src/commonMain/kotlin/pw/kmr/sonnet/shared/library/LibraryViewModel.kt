@@ -25,7 +25,8 @@ import pw.kmr.sonnet.shared.model.LibraryBook
 class LibraryViewModel(
     private val repository: LibraryViewModelRepository,
     private val requiresReauth: Flow<Boolean> = flowOf(false),
-    private val downloadScheduler: BookDownloadScheduler? = null
+    private val downloadScheduler: BookDownloadScheduler? = null,
+    private val isOnline: Flow<Boolean> = flowOf(true)
 ) : ViewModel() {
     private val refreshState = MutableStateFlow(RefreshState())
     private val downloadJobs = mutableMapOf<String, Job>()
@@ -43,8 +44,8 @@ class LibraryViewModel(
         )
 
     val uiState: StateFlow<LibraryUiState> = combine(
-        localLibrary, refreshState, searchQuery, requiresReauth
-    ) { local, refresh, query, needsReauth ->
+        localLibrary, refreshState, searchQuery, requiresReauth, isOnline
+    ) { local, refresh, query, needsReauth, online ->
         val filtered = if (query.isBlank()) local.books
         else {
             val lowerQuery = query.lowercase()
@@ -56,11 +57,12 @@ class LibraryViewModel(
         LibraryUiState(
             books = filtered,
             isRefreshing = refresh.isRefreshing,
-            lastRefreshFailed = refresh.lastErrorMessage != null,
+            lastRefreshFailed = refresh.lastRefreshFailed,
             errorMessage = refresh.lastErrorMessage,
             initialLoadComplete = local.hasLoaded,
             searchQuery = query,
-            requiresReauth = needsReauth
+            requiresReauth = needsReauth,
+            isOnline = online
         )
     }.stateIn(
         scope = viewModelScope,
@@ -85,20 +87,32 @@ class LibraryViewModel(
         refreshInProgress = true
 
         viewModelScope.launch {
-            if (showProgress) refreshState.value = RefreshState(isRefreshing = true)
+            if (showProgress) {
+                refreshState.value = refreshState.value.copy(
+                    isRefreshing = true,
+                    lastErrorMessage = null
+                )
+            }
 
             try {
                 repository.refresh()
-                if (showProgress) refreshState.value = RefreshState(isRefreshing = false)
+                refreshState.value = RefreshState(
+                    isRefreshing = false,
+                    lastRefreshFailed = false,
+                    lastErrorMessage = null
+                )
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (throwable: Throwable) {
-                if (showProgress) {
-                    refreshState.value = RefreshState(
-                        isRefreshing = false,
-                        lastErrorMessage = throwable.message ?: "Library refresh failed."
-                    )
-                }
+                refreshState.value = RefreshState(
+                    isRefreshing = false,
+                    lastRefreshFailed = true,
+                    lastErrorMessage = if (showProgress) {
+                        throwable.message ?: "Library refresh failed."
+                    } else {
+                        null
+                    }
+                )
             } finally {
                 refreshInProgress = false
             }
@@ -256,10 +270,11 @@ class LibraryViewModel(
 fun libraryViewModelFactory(
     repository: LibraryViewModelRepository,
     requiresReauth: Flow<Boolean> = flowOf(false),
-    downloadScheduler: BookDownloadScheduler? = null
+    downloadScheduler: BookDownloadScheduler? = null,
+    isOnline: Flow<Boolean> = flowOf(true)
 ): ViewModelProvider.Factory = viewModelFactory {
     initializer {
-        LibraryViewModel(repository, requiresReauth, downloadScheduler)
+        LibraryViewModel(repository, requiresReauth, downloadScheduler, isOnline)
     }
 }
 
@@ -270,11 +285,13 @@ data class LibraryUiState(
     val errorMessage: String? = null,
     val initialLoadComplete: Boolean = false,
     val searchQuery: String = "",
-    val requiresReauth: Boolean = false
+    val requiresReauth: Boolean = false,
+    val isOnline: Boolean = true
 )
 
 private data class RefreshState(
     val isRefreshing: Boolean = false,
+    val lastRefreshFailed: Boolean = false,
     val lastErrorMessage: String? = null
 )
 

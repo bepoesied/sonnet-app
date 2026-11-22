@@ -2,9 +2,8 @@ package pw.kmr.sonnet.library
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,12 +15,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,9 +42,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,10 +54,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Alignment.Companion.CenterVertically
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -62,51 +81,161 @@ import pw.kmr.sonnet.shared.library.libraryViewModelFactory
 import pw.kmr.sonnet.shared.model.DownloadStatus
 import pw.kmr.sonnet.shared.model.LibraryBook
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryRoute(
     repository: LibraryRepository,
     onOpenPlayer: (LibraryBook) -> Unit,
     onLogout: () -> Unit,
+    onReauthenticate: () -> Unit = {},
     requiresReauth: Flow<Boolean> = flowOf(false),
+    isOnline: Flow<Boolean> = flowOf(true),
     downloadScheduler: BookDownloadScheduler? = null,
     modifier: Modifier = Modifier
 ) {
-    val viewModel: LibraryViewModel = viewModel(
-        factory = libraryViewModelFactory(repository, requiresReauth, downloadScheduler)
-    )
+    val factory = remember(repository, requiresReauth, downloadScheduler, isOnline) {
+        libraryViewModelFactory(repository, requiresReauth, downloadScheduler, isOnline)
+    }
+    val viewModel: LibraryViewModel = viewModel(factory = factory)
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LibraryScreen(
+        uiState = uiState,
+        onRefresh = viewModel::refresh,
+        onClearError = viewModel::clearError,
+        onSearchQueryChange = viewModel::updateSearchQuery,
+        onOpenPlayer = onOpenPlayer,
+        onCompletionAction = viewModel::swipeCompletionAction,
+        onDownloadAction = viewModel::swipeDownloadAction,
+        onLogout = onLogout,
+        onReauthenticate = onReauthenticate,
+        modifier = modifier
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun LibraryScreen(
+    uiState: LibraryUiState,
+    onRefresh: () -> Unit,
+    onClearError: () -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onOpenPlayer: (LibraryBook) -> Unit,
+    onCompletionAction: (LibraryBook) -> Unit,
+    onDownloadAction: (LibraryBook) -> Unit,
+    onLogout: () -> Unit,
+    onReauthenticate: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     val snackbarHostState = remember { SnackbarHostState() }
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    var showLogoutConfirmation by remember { mutableStateOf(false) }
+    var bookPendingDelete by remember { mutableStateOf<LibraryBook?>(null) }
 
     LaunchedEffect(uiState.errorMessage) {
         val message = uiState.errorMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(message)
-        viewModel.clearError()
+        onClearError()
+    }
+
+    if (showLogoutConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirmation = false },
+            title = { Text(text = "Log out?") },
+            text = {
+                Text(
+                    text = "Logging out will remove all downloaded audiobooks from this device."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutConfirmation = false
+                        onLogout()
+                    }
+                ) {
+                    Text(
+                        text = "Log out",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutConfirmation = false }) {
+                    Text(text = "Cancel")
+                }
+            }
+        )
+    }
+
+    val pendingDelete = bookPendingDelete
+    if (pendingDelete != null) {
+        AlertDialog(
+            onDismissRequest = { bookPendingDelete = null },
+            title = { Text(text = "Delete download?") },
+            text = {
+                Text(
+                    text = "Remove downloaded audio files for \"${pendingDelete.title}\" from this device? Your listening progress will be kept."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        bookPendingDelete = null
+                        onDownloadAction(pendingDelete)
+                    }
+                ) {
+                    Text(
+                        text = "Delete",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { bookPendingDelete = null }) {
+                    Text(text = "Cancel")
+                }
+            }
+        )
     }
 
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 title = { Text(text = "Library") },
-                actions = { TextButton(onClick = onLogout) { Text(text = "Log out") } }
+                actions = {
+                    TextButton(onClick = { showLogoutConfirmation = true }) {
+                        Text(text = "Log out")
+                    }
+                },
+                scrollBehavior = scrollBehavior
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { contentPadding ->
         PullToRefreshBox(
             isRefreshing = uiState.isRefreshing,
-            onRefresh = viewModel::refresh,
+            onRefresh = onRefresh,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(contentPadding)
         ) {
             LibraryContent(
                 uiState = uiState,
-                onSearchQueryChange = viewModel::updateSearchQuery,
+                onSearchQueryChange = onSearchQueryChange,
                 onBookClick = onOpenPlayer,
-                onSwipeCompletionAction = viewModel::swipeCompletionAction,
-                onSwipeDownloadAction = viewModel::swipeDownloadAction,
+                onCompletionAction = onCompletionAction,
+                onDownloadAction = { book ->
+                    if (book.downloadStatus == DownloadStatus.Downloaded) {
+                        bookPendingDelete = book
+                    } else {
+                        onDownloadAction(book)
+                    }
+                },
+                onRetry = onRefresh,
+                onReauthenticate = onReauthenticate,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -118,79 +247,148 @@ private fun LibraryContent(
     uiState: LibraryUiState,
     onSearchQueryChange: (String) -> Unit,
     onBookClick: (LibraryBook) -> Unit,
-    onSwipeCompletionAction: (LibraryBook) -> Unit,
-    onSwipeDownloadAction: (LibraryBook) -> Unit,
+    onCompletionAction: (LibraryBook) -> Unit,
+    onDownloadAction: (LibraryBook) -> Unit,
+    onRetry: () -> Unit,
+    onReauthenticate: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    when {
-        !uiState.initialLoadComplete -> LibraryLoadingContent(
-            query = uiState.searchQuery,
-            onSearchQueryChange = onSearchQueryChange,
-            modifier = modifier
-        )
-
-        uiState.books.isEmpty() && uiState.isRefreshing -> LibraryLoadingContent(
-            query = uiState.searchQuery,
-            onSearchQueryChange = onSearchQueryChange,
-            modifier = modifier
-        )
-        uiState.books.isEmpty() && uiState.searchQuery.isBlank() -> EmptyLibrary(
-            lastRefreshFailed = uiState.lastRefreshFailed,
-            modifier = modifier
-        )
-
-        else -> Column(modifier = modifier) {
-            LibrarySearchBar(
-                query = uiState.searchQuery,
-                onQueryChange = onSearchQueryChange,
+    Column(modifier = modifier) {
+        if (uiState.requiresReauth) {
+            ReauthBanner(
+                onSignInAgain = onReauthenticate,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
             )
-            if (uiState.books.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No matching books.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                LibraryList(
-                    books = uiState.books,
-                    onBookClick = onBookClick,
-                    onSwipeCompletionAction = onSwipeCompletionAction,
-                    onSwipeDownloadAction = onSwipeDownloadAction,
-                    modifier = Modifier.fillMaxSize()
+        }
+        if (!uiState.isOnline) {
+            OfflineBanner(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
+            )
+        }
+        // Keep the search bar hoisted in one stable position so focus and IME survive state transitions.
+        LibrarySearchBar(
+            query = uiState.searchQuery,
+            onQueryChange = onSearchQueryChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+
+        when {
+            !uiState.initialLoadComplete -> LibrarySkeleton(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            )
+
+            uiState.books.isEmpty() && uiState.isRefreshing && uiState.searchQuery.isBlank() -> LibrarySkeleton(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            )
+
+            uiState.books.isEmpty() && uiState.searchQuery.isBlank() -> EmptyLibrary(
+                lastRefreshFailed = uiState.lastRefreshFailed,
+                isOnline = uiState.isOnline,
+                onRetry = onRetry,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            )
+
+            uiState.books.isEmpty() -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "No matching books.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            else -> LibraryList(
+                books = uiState.books,
+                onBookClick = onBookClick,
+                onSwipeCompletionAction = onCompletionAction,
+                onSwipeDownloadAction = onDownloadAction,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReauthBanner(
+    onSignInAgain: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 14.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
+            verticalAlignment = CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.WarningAmber,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "Session expired. Downloaded books stay playable.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onSignInAgain) {
+                Text(text = "Sign in again")
             }
         }
     }
 }
 
 @Composable
-private fun LibraryLoadingContent(
-    query: String,
-    onSearchQueryChange: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier = modifier) {
-        // Use the real control so its dimensions and position match the populated library.
-        LibrarySearchBar(
-            query = query,
-            onQueryChange = onSearchQueryChange,
+private fun OfflineBanner(modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+    ) {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-        )
-        LibrarySkeleton(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        )
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.CloudOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "Offline — downloaded books remain playable.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -240,7 +438,7 @@ private fun LibraryList(
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
     ) {
-        items(books, key = { it.id }) { book ->
+        itemsIndexed(books, key = { _, book -> book.id }) { index, book ->
             LibraryRow(
                 book = book,
                 onClick = { onBookClick(book) },
@@ -259,7 +457,9 @@ private fun LibraryList(
                     onSwipeDownloadAction(book)
                 }
             )
-            HorizontalDivider(modifier = Modifier.padding(start = 84.dp))
+            if (index < books.lastIndex) {
+                HorizontalDivider(modifier = Modifier.padding(start = 88.dp))
+            }
         }
     }
 }
@@ -274,10 +474,24 @@ private fun LibraryRow(
     onSwipeDownloadAction: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val downloadActionLabel = book.downloadStatus.actionLabel()
+    val completionActionLabel = if (book.isCompleted) "Mark unplayed" else "Mark played"
+
     SwipeActionBox(
         revealedDirection = revealedDirection,
         onRevealedChange = onRevealedChange,
-        modifier = modifier,
+        modifier = modifier.semantics {
+            customActions = listOf(
+                CustomAccessibilityAction(label = downloadActionLabel) {
+                    onSwipeDownloadAction()
+                    true
+                },
+                CustomAccessibilityAction(label = completionActionLabel) {
+                    onSwipeCompletionAction()
+                    true
+                }
+            )
+        },
         startBackgroundContent = {
             CompletionActionBackground(book = book, onClick = onSwipeCompletionAction)
         },
@@ -287,6 +501,7 @@ private fun LibraryRow(
     ) {
         Row(
             modifier = Modifier
+                .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.background)
                 .clickable(enabled = book.isDownloaded, onClick = onClick)
                 .padding(vertical = 14.dp),
@@ -334,19 +549,73 @@ private fun LibraryRow(
                 }
                 if (book.downloadStatus == DownloadStatus.Downloading) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = { book.downloadProgress() ?: 0f },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    val progress = book.downloadProgress()
+                    if (progress != null) {
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
                 }
-                if (!book.isDownloaded) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "Swipe left to ${book.downloadStatus.actionLabel().lowercase()}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            BookTrailingAction(
+                book = book,
+                onDownloadAction = onSwipeDownloadAction
+            )
+        }
+    }
+}
+
+@Composable
+private fun BookTrailingAction(
+    book: LibraryBook,
+    onDownloadAction: () -> Unit
+) {
+    when (book.downloadStatus) {
+        DownloadStatus.NotDownloaded -> {
+            IconButton(onClick = onDownloadAction) {
+                Icon(
+                    imageVector = Icons.Filled.Download,
+                    contentDescription = "Download ${book.title}",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        DownloadStatus.Failed -> {
+            IconButton(onClick = onDownloadAction) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Retry download ${book.title}",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+
+        DownloadStatus.Queued,
+        DownloadStatus.Downloading -> {
+            IconButton(onClick = onDownloadAction) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Cancel download ${book.title}",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        DownloadStatus.Downloaded -> {
+            Box(
+                modifier = Modifier.size(48.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.DownloadDone,
+                    contentDescription = "Downloaded",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }
@@ -394,7 +663,7 @@ private fun LibrarySkeleton(modifier: Modifier = Modifier) {
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
     ) {
-        items(count = 7, key = { it }) {
+        items(count = 7, key = { it }) { index ->
             Row(
                 modifier = Modifier.padding(vertical = 14.dp),
                 verticalAlignment = CenterVertically
@@ -421,7 +690,9 @@ private fun LibrarySkeleton(modifier: Modifier = Modifier) {
                     )
                 }
             }
-            HorizontalDivider(modifier = Modifier.padding(start = 84.dp))
+            if (index < 6) {
+                HorizontalDivider(modifier = Modifier.padding(start = 88.dp))
+            }
         }
     }
 }
@@ -439,17 +710,63 @@ private fun SkeletonBlock(modifier: Modifier = Modifier) {
 @Composable
 private fun EmptyLibrary(
     lastRefreshFailed: Boolean,
+    isOnline: Boolean,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+    val icon = when {
+        !isOnline -> Icons.Filled.CloudOff
+        lastRefreshFailed -> Icons.Filled.ErrorOutline
+        else -> Icons.AutoMirrored.Filled.MenuBook
+    }
+    val title = when {
+        !isOnline -> "You're offline"
+        lastRefreshFailed -> "Library refresh failed"
+        else -> "No books yet"
+    }
+    val subtitle = when {
+        !isOnline -> "Connect to the internet to load your library."
+        lastRefreshFailed -> "Check your connection and try again."
+        else -> "Pull down to refresh once audiobooks are available on your server."
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 32.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = if (lastRefreshFailed) "Library refresh failed." else "No books yet.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (lastRefreshFailed && isOnline) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.size(48.dp)
         )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        if (lastRefreshFailed || !isOnline) {
+            Spacer(modifier = Modifier.height(20.dp))
+            FilledTonalButton(onClick = onRetry) {
+                Text(text = "Retry")
+            }
+        }
     }
 }
 
@@ -519,7 +836,7 @@ private fun DownloadStatus.actionContentColor() = when (this) {
     DownloadStatus.Downloaded -> MaterialTheme.colorScheme.onErrorContainer
 }
 
-private fun LibraryBook.downloadProgress(): Float? {
-    val total = totalChapters?.takeIf { it > 0L } ?: return progressPercent
+internal fun LibraryBook.downloadProgress(): Float? {
+    val total = totalChapters?.takeIf { it > 0L } ?: return null
     return (downloadedChapters.toFloat() / total.toFloat()).coerceIn(0f, 1f)
 }

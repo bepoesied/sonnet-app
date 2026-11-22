@@ -15,12 +15,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
@@ -28,35 +33,43 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderState
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.util.Locale
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToLong
 import pw.kmr.sonnet.core.ui.component.BookCover
@@ -66,7 +79,6 @@ import pw.kmr.sonnet.shared.playback.PlayerUiState
 import pw.kmr.sonnet.shared.playback.ProgressResumePrompt
 import pw.kmr.sonnet.shared.playback.SleepTimerState
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerRoute(
     bookId: String,
@@ -74,28 +86,68 @@ fun PlayerRoute(
     playbackOrchestrator: PlaybackOrchestrator,
     onBack: () -> Unit,
     onDialogVisibilityChange: (Boolean) -> Unit = {},
-    coverModifier: Modifier = Modifier,
-    playButtonModifier: Modifier = Modifier,
-    progressModifier: Modifier = Modifier,
-    surfaceBoundsModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
+    val factory = remember(playbackOrchestrator, bookId) {
+        PlayerViewModel.Factory(playbackOrchestrator, bookId)
+    }
     val viewModel: PlayerViewModel = viewModel(
         key = "player-$bookId",
-        factory = PlayerViewModel.Factory(playbackOrchestrator, bookId)
+        factory = factory
     )
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(bookId) {
         viewModel.load()
     }
 
-    LaunchedEffect(uiState.errorMessage, uiState.bookMissing) {
-        if (uiState.bookMissing) return@LaunchedEffect
+    PlayerScreen(
+        bookId = bookId,
+        isDownloaded = isDownloaded,
+        uiState = uiState,
+        onBack = onBack,
+        onPlayPause = viewModel::playPause,
+        onSeekBack = viewModel::seekBack,
+        onSeekForward = viewModel::seekForward,
+        onSeekTo = viewModel::seekTo,
+        onJumpToChapter = viewModel::jumpToChapter,
+        onSetSleepTimer = viewModel::setSleepTimer,
+        onUseRemoteProgress = viewModel::useRemoteProgress,
+        onKeepLocalProgress = viewModel::keepLocalProgress,
+        onClearError = viewModel::clearError,
+        onDialogVisibilityChange = onDialogVisibilityChange,
+        modifier = modifier
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun PlayerScreen(
+    bookId: String,
+    isDownloaded: Boolean,
+    uiState: PlayerUiState,
+    onBack: () -> Unit,
+    onPlayPause: () -> Unit,
+    onSeekBack: () -> Unit,
+    onSeekForward: () -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onJumpToChapter: (String) -> Unit,
+    onSetSleepTimer: (SleepTimerState) -> Unit,
+    onUseRemoteProgress: () -> Unit,
+    onKeepLocalProgress: () -> Unit,
+    onClearError: () -> Unit,
+    onDialogVisibilityChange: (Boolean) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val isUnavailable = uiState.bookMissing ||
+        (uiState.errorMessage != null && !uiState.canPlay && uiState.chapters.isEmpty())
+
+    LaunchedEffect(uiState.errorMessage, isUnavailable) {
+        if (isUnavailable) return@LaunchedEffect
         val message = uiState.errorMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(message)
-        viewModel.clearError()
+        onClearError()
     }
 
     Scaffold(
@@ -103,35 +155,42 @@ fun PlayerRoute(
         topBar = {
             TopAppBar(
                 title = { Text(text = "Player") },
-                navigationIcon = { TextButton(onClick = onBack) { Text(text = "Back") } }
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = "Minimize player"
+                        )
+                    }
+                }
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { contentPadding ->
         if (!isDownloaded) {
-            NotDownloaded(contentPadding = contentPadding)
-        } else if (uiState.bookMissing) {
+            NotDownloaded(
+                onBack = onBack,
+                contentPadding = contentPadding
+            )
+        } else if (isUnavailable) {
             BookUnavailable(
                 message = uiState.errorMessage ?: "This book is unavailable. Try downloading it again.",
+                onBack = onBack,
                 contentPadding = contentPadding
             )
         } else {
             PlayerContent(
                 bookId = bookId,
                 uiState = uiState,
-                onPlayPause = viewModel::playPause,
-                onSeekBack = viewModel::seekBack,
-                onSeekForward = viewModel::seekForward,
-                onSeekTo = viewModel::seekTo,
-                onJumpToChapter = viewModel::jumpToChapter,
-                onSetSleepTimer = viewModel::setSleepTimer,
-                onUseRemoteProgress = viewModel::useRemoteProgress,
-                onKeepLocalProgress = viewModel::keepLocalProgress,
+                onPlayPause = onPlayPause,
+                onSeekBack = onSeekBack,
+                onSeekForward = onSeekForward,
+                onSeekTo = onSeekTo,
+                onJumpToChapter = onJumpToChapter,
+                onSetSleepTimer = onSetSleepTimer,
+                onUseRemoteProgress = onUseRemoteProgress,
+                onKeepLocalProgress = onKeepLocalProgress,
                 onDialogVisibilityChange = onDialogVisibilityChange,
-                coverModifier = coverModifier,
-                playButtonModifier = playButtonModifier,
-                progressModifier = progressModifier,
-                surfaceBoundsModifier = surfaceBoundsModifier,
                 modifier = Modifier.padding(contentPadding)
             )
         }
@@ -167,28 +226,49 @@ private fun ResumeProgressDialog(
 }
 
 @Composable
-private fun NotDownloaded(contentPadding: PaddingValues) {
+private fun NotDownloaded(
+    onBack: () -> Unit,
+    contentPadding: PaddingValues
+) {
     BookUnavailable(
         message = "This book is not downloaded yet.",
+        onBack = onBack,
         contentPadding = contentPadding
     )
 }
 
 @Composable
-private fun BookUnavailable(message: String, contentPadding: PaddingValues) {
-    Box(
+private fun BookUnavailable(
+    message: String,
+    onBack: () -> Unit,
+    contentPadding: PaddingValues
+) {
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(contentPadding)
-            .padding(horizontal = 24.dp),
-        contentAlignment = Alignment.Center
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
+        Icon(
+            imageVector = Icons.Filled.ErrorOutline,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(48.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = message,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
+        Spacer(modifier = Modifier.height(20.dp))
+        FilledTonalButton(onClick = onBack) {
+            Text(text = "Back to library")
+        }
     }
 }
 
@@ -205,23 +285,14 @@ private fun PlayerContent(
     onUseRemoteProgress: () -> Unit,
     onKeepLocalProgress: () -> Unit,
     onDialogVisibilityChange: (Boolean) -> Unit,
-    coverModifier: Modifier = Modifier,
-    playButtonModifier: Modifier = Modifier,
-    progressModifier: Modifier = Modifier,
-    surfaceBoundsModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     var showChapters by remember { mutableStateOf(false) }
     var showSleepTimer by remember { mutableStateOf(false) }
-    var scrubPosition by remember(uiState.currentChapterId) { mutableLongStateOf(uiState.currentChapterPositionMs) }
-
-    LaunchedEffect(uiState.currentChapterPositionMs) {
-        scrubPosition = uiState.currentChapterPositionMs
-    }
 
     val resumePrompt = uiState.resumePrompt
-    // Dialogs use their own window/back handling. While one is shown the app-level player
-    // gesture must not also dismiss the sheet behind it.
+    // Dialogs and sheets use their own window/back handling. While one is shown the app-level
+    // player gesture must not also dismiss the sheet behind it.
     SideEffect { onDialogVisibilityChange(resumePrompt != null || showChapters || showSleepTimer) }
     if (resumePrompt != null) {
         ResumeProgressDialog(
@@ -232,7 +303,7 @@ private fun PlayerContent(
     }
 
     if (showChapters) {
-        ChapterDialog(
+        ChapterSheet(
             chapters = uiState.chapters,
             currentChapterId = uiState.currentChapterId,
             onDismiss = { showChapters = false },
@@ -244,7 +315,7 @@ private fun PlayerContent(
     }
 
     if (showSleepTimer) {
-        SleepTimerDialog(
+        SleepTimerSheet(
             currentTimer = uiState.sleepTimer,
             onDismiss = { showSleepTimer = false },
             onSetSleepTimer = {
@@ -257,7 +328,7 @@ private fun PlayerContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .then(surfaceBoundsModifier)
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -268,7 +339,7 @@ private fun PlayerContent(
             shape = RoundedCornerShape(18.dp),
             monogramStyle = MaterialTheme.typography.displayMedium,
             crossfade = false,
-            modifier = coverModifier.size(220.dp)
+            modifier = Modifier.size(220.dp)
         )
         Spacer(modifier = Modifier.height(24.dp))
         Text(
@@ -283,39 +354,40 @@ private fun PlayerContent(
             text = listOfNotNull(uiState.author, uiState.currentChapterTitle.takeIf { it.isNotBlank() })
                 .joinToString(" • ")
                 .ifBlank { "Preparing chapters" },
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis
         )
         Spacer(modifier = Modifier.height(24.dp))
-        Slider(
-            value = scrubPosition.toFloat(),
-            onValueChange = { scrubPosition = it.roundToLong() },
-            onValueChangeFinished = { onSeekTo(uiState.currentChapterStartPositionMs + scrubPosition) },
-            valueRange = 0f..max(uiState.currentChapterDurationMs, 1L).toFloat(),
-            modifier = progressModifier.fillMaxWidth()
+        PlayerSeekBar(
+            chapterId = uiState.currentChapterId,
+            chapterStartPositionMs = uiState.currentChapterStartPositionMs,
+            chapterPositionMs = uiState.currentChapterPositionMs,
+            chapterDurationMs = uiState.currentChapterDurationMs,
+            onSeekTo = onSeekTo
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(text = scrubPosition.formatDuration(), style = MaterialTheme.typography.labelMedium)
-            Text(text = uiState.currentChapterDurationMs.formatDuration(), style = MaterialTheme.typography.labelMedium)
-        }
         Spacer(modifier = Modifier.height(28.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(26.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             FilledTonalIconButton(
                 onClick = onSeekBack,
                 enabled = uiState.canPlay,
                 modifier = Modifier.size(72.dp)
             ) {
-                Icon(imageVector = Icons.Filled.Replay10, contentDescription = "Seek back 10 seconds", modifier = Modifier.size(36.dp))
+                Icon(
+                    imageVector = Icons.Filled.Replay10,
+                    contentDescription = "Seek back 10 seconds",
+                    modifier = Modifier.size(36.dp)
+                )
             }
             FilledIconButton(
                 onClick = onPlayPause,
                 enabled = uiState.canPlay,
-                modifier = playButtonModifier.size(92.dp)
+                modifier = Modifier.size(92.dp)
             ) {
                 Icon(
                     imageVector = if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -328,25 +400,58 @@ private fun PlayerContent(
                 enabled = uiState.canPlay,
                 modifier = Modifier.size(72.dp)
             ) {
-                Icon(imageVector = Icons.Filled.Forward10, contentDescription = "Seek forward 10 seconds", modifier = Modifier.size(36.dp))
+                Icon(
+                    imageVector = Icons.Filled.Forward10,
+                    contentDescription = "Seek forward 10 seconds",
+                    modifier = Modifier.size(36.dp)
+                )
             }
         }
         Spacer(modifier = Modifier.height(24.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(34.dp), verticalAlignment = Alignment.Top) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(34.dp),
+            verticalAlignment = Alignment.Top
+        ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = { showChapters = true }, enabled = uiState.chapters.isNotEmpty(), modifier = Modifier.size(56.dp)) {
-                    Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "Chapters", modifier = Modifier.size(30.dp))
-                }
-                Text(text = "Chapters", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = { showSleepTimer = true }, modifier = Modifier.size(56.dp)) {
-                    Icon(imageVector = Icons.Filled.Timer, contentDescription = uiState.sleepTimer.label(), modifier = Modifier.size(30.dp))
+                IconButton(
+                    onClick = { showChapters = true },
+                    enabled = uiState.chapters.isNotEmpty(),
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.List,
+                        contentDescription = "Chapters",
+                        modifier = Modifier.size(30.dp)
+                    )
                 }
                 Text(
-                    text = if (uiState.sleepTimer is SleepTimerState.Off) "Sleep" else uiState.sleepTimer.label(),
+                    text = "Chapters",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            val sleepTimerActive = uiState.sleepTimer !is SleepTimerState.Off
+            val sleepTint = if (sleepTimerActive) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(
+                    onClick = { showSleepTimer = true },
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Timer,
+                        contentDescription = uiState.sleepTimer.formatLabel(),
+                        tint = if (sleepTimerActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+                Text(
+                    text = if (sleepTimerActive) uiState.sleepTimer.formatLabel() else "Sleep",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = sleepTint
                 )
             }
         }
@@ -354,100 +459,260 @@ private fun PlayerContent(
 }
 
 @Composable
-private fun ChapterDialog(
+internal fun PlayerSeekBar(
+    chapterId: String?,
+    chapterStartPositionMs: Long,
+    chapterPositionMs: Long,
+    chapterDurationMs: Long,
+    onSeekTo: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val safeDurationMs = max(chapterDurationMs, 1L)
+    val trackRange = 0f..safeDurationMs.toFloat()
+    var dragPositionMs by remember(chapterId) { mutableStateOf<Long?>(null) }
+    val displayedPositionMs = (dragPositionMs ?: chapterPositionMs).coerceIn(0L, safeDurationMs)
+
+    val sliderState = remember(trackRange) {
+        SliderState(
+            value = displayedPositionMs.toFloat(),
+            trackRange = trackRange
+        )
+    }
+    if (dragPositionMs != null) {
+        sliderState.value = displayedPositionMs.toFloat()
+    } else if (!sliderState.isDragging) {
+        sliderState.value = displayedPositionMs.toFloat()
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Slider(
+            state = sliderState,
+            onValueChange = { newValue ->
+                val clamped = newValue.roundToLong().coerceIn(0L, safeDurationMs)
+                dragPositionMs = clamped
+                sliderState.value = clamped.toFloat()
+            },
+            onValueChangeFinished = {
+                val targetPositionMs = dragPositionMs ?: sliderState.value.roundToLong()
+                onSeekTo(chapterStartPositionMs + targetPositionMs)
+                dragPositionMs = null
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "Playback position" }
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = displayedPositionMs.formatDuration(),
+                style = MaterialTheme.typography.labelMedium
+            )
+            Text(
+                text = chapterDurationMs.formatDuration(),
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChapterSheet(
     chapters: List<PlayerChapter>,
     currentChapterId: String?,
     onDismiss: () -> Unit,
     onJumpToChapter: (String) -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState()
     val currentIndex = chapters.indexOfFirst { it.id == currentChapterId }.coerceAtLeast(0)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = max(currentIndex - 1, 0))
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text(text = "Chapters") },
-        text = {
-            LazyColumn(state = listState) {
-                items(chapters, key = { it.id }) { chapter ->
-                    val selected = chapter.id == currentChapterId
-                    Row(
+        sheetState = sheetState
+    ) {
+        Text(
+            text = "Chapters",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+        )
+        HorizontalDivider()
+        LazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(bottom = 24.dp)
+        ) {
+            itemsIndexed(chapters, key = { _, chapter -> chapter.id }) { index, chapter ->
+                val selected = chapter.id == currentChapterId
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onJumpToChapter(chapter.id) }
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onJumpToChapter(chapter.id) }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(4.dp)
-                                .height(44.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0f)
-                                )
+                            .width(4.dp)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0f)
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = chapter.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = chapter.title,
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = chapter.startPositionMs.formatDuration(),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = chapter.startPositionMs.formatDuration(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    HorizontalDivider()
+                    if (selected) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = "Current chapter",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                if (index < chapters.lastIndex) {
+                    HorizontalDivider(modifier = Modifier.padding(start = 44.dp))
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(text = "Close") } }
-    )
+        }
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SleepTimerDialog(
+private fun SleepTimerSheet(
     currentTimer: SleepTimerState,
     onDismiss: () -> Unit,
     onSetSleepTimer: (SleepTimerState) -> Unit
 ) {
-    val options = listOf(
-        SleepTimerState.Off,
-        SleepTimerState.ChapterEnd,
-        SleepTimerState.Countdown(15 * 60_000L),
-        SleepTimerState.Countdown(30 * 60_000L),
-        SleepTimerState.Countdown(60 * 60_000L)
+    val sheetState = rememberModalBottomSheetState()
+    val presetOptions = listOf(
+        SleepTimerOption("Off", SleepTimerState.Off),
+        SleepTimerOption("End of chapter", SleepTimerState.ChapterEnd),
+        SleepTimerOption(formatSleepTimerPreset(15L), SleepTimerState.Countdown(15 * 60_000L)),
+        SleepTimerOption(formatSleepTimerPreset(30L), SleepTimerState.Countdown(30 * 60_000L)),
+        SleepTimerOption(formatSleepTimerPreset(60L), SleepTimerState.Countdown(60 * 60_000L))
     )
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text(text = "Sleep timer") },
-        text = {
-            Column {
-                options.forEach { option ->
-                    Text(
-                        text = option.label(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSetSleepTimer(option) }
-                            .padding(vertical = 12.dp),
-                        fontWeight = if (option == currentTimer) FontWeight.SemiBold else FontWeight.Normal
-                    )
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp)
+        ) {
+            Text(
+                text = "Sleep timer",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+            )
+            if (currentTimer is SleepTimerState.Countdown) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Timer,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Active: ${currentTimer.formatLabel()} remaining",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = "Active sleep timer",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(text = "Close") } }
-    )
+            HorizontalDivider(modifier = Modifier.padding(top = 4.dp))
+            presetOptions.forEach { option ->
+                val isSelected = when (option.state) {
+                    SleepTimerState.Off -> currentTimer is SleepTimerState.Off
+                    SleepTimerState.ChapterEnd -> currentTimer is SleepTimerState.ChapterEnd
+                    is SleepTimerState.Countdown -> currentTimer == option.state
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSetSleepTimer(option.state) }
+                        .padding(horizontal = 24.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = option.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = "Selected",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
-private fun SleepTimerState.label(): String = when (this) {
+private data class SleepTimerOption(
+    val label: String,
+    val state: SleepTimerState
+)
+
+private fun formatSleepTimerPreset(minutes: Long): String =
+    if (minutes == 1L) "1 minute" else "$minutes minutes"
+
+internal fun SleepTimerState.formatLabel(): String = when (this) {
     SleepTimerState.Off -> "Off"
     SleepTimerState.ChapterEnd -> "End of chapter"
-    is SleepTimerState.Countdown -> (remainingMs / 60_000L).toString() + " minutes"
+    is SleepTimerState.Countdown -> formatSleepTimerCountdown(remainingMs)
+}
+
+internal fun formatSleepTimerCountdown(remainingMs: Long): String {
+    val totalSeconds = ceil(remainingMs.coerceAtLeast(0L) / 1000.0).toLong()
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0L) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%d:%02d", minutes, seconds)
+    }
 }
 
 private fun Long.formatDuration(): String {
@@ -455,9 +720,9 @@ private fun Long.formatDuration(): String {
     val hours = totalSeconds / 3600L
     val minutes = (totalSeconds % 3600L) / 60L
     val seconds = totalSeconds % 60L
-    return if (hours > 0) {
-        java.lang.String.format(java.util.Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    return if (hours > 0L) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
     } else {
-        java.lang.String.format(java.util.Locale.US, "%d:%02d", minutes, seconds)
+        String.format(Locale.US, "%d:%02d", minutes, seconds)
     }
 }
