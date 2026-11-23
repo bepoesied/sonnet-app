@@ -33,7 +33,7 @@ class LoginRepositoryTest {
     fun `prepareLogin normalizes url and builds mobile authorize request`() {
         val repository = createRepository(enforcesHttps = true)
 
-        val prepared = repository.prepareLogin("  sonnet.example.com/  ")
+        val prepared = repository.prepareLogin("  https://sonnet.example.com/  ")
 
         assertEquals("https://sonnet.example.com", prepared.pendingLogin.serverUrl)
         assertEquals(LoginRepository.DEFAULT_REDIRECT_URI, prepared.pendingLogin.redirectUri)
@@ -53,11 +53,14 @@ class LoginRepositoryTest {
     @Test
     fun `prepareLogin enforces https policy and rejects invalid urls`() {
         val httpsOnly = createRepository(enforcesHttps = true)
+        assertFailsWith<IllegalArgumentException> { httpsOnly.prepareLogin("sonnet.example.com") }
         assertFailsWith<IllegalArgumentException> { httpsOnly.prepareLogin("http://sonnet.example.com") }
         assertFailsWith<IllegalArgumentException> { httpsOnly.prepareLogin("ftp://sonnet.example.com") }
         assertFailsWith<IllegalArgumentException> { httpsOnly.prepareLogin("https://sonnet.example.com?x=1") }
         assertFailsWith<IllegalArgumentException> { httpsOnly.prepareLogin("https://sonnet.example.com#frag") }
         assertFailsWith<IllegalArgumentException> { httpsOnly.prepareLogin("   ") }
+        assertFailsWith<IllegalArgumentException> { httpsOnly.prepareLogin("https://") }
+        assertFailsWith<IllegalArgumentException> { httpsOnly.prepareLogin("https://:4000") }
 
         val allowHttp = createRepository(enforcesHttps = false)
         val prepared = allowHttp.prepareLogin("http://10.0.2.2:4000/")

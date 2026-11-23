@@ -1,6 +1,8 @@
 package pw.kmr.sonnet.shared.auth
 
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockEngineConfig
+import io.ktor.client.engine.mock.MockRequestHandler
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -66,7 +68,7 @@ class LoginViewModelTest {
         val store = InMemorySessionStore()
         val repository = createRepository(
             store = store,
-            engine = MockEngine {
+            engine = createMockEngine {
                 respond(
                     content = """
                         {
@@ -133,7 +135,7 @@ class LoginViewModelTest {
         val store = InMemorySessionStore()
         val repository = createRepository(
             store = store,
-            engine = MockEngine {
+            engine = createMockEngine {
                 respond(
                     content = "{\"error\":\"invalid_grant\"}",
                     status = HttpStatusCode.Unauthorized,
@@ -158,9 +160,16 @@ class LoginViewModelTest {
         assertEquals("Authentication failed. Please sign in again.", viewModel.uiState.value.errorMessage)
     }
 
+    private fun createMockEngine(handler: MockRequestHandler): MockEngine = MockEngine(
+        MockEngineConfig().apply {
+            dispatcher = testDispatcher
+            addHandler(handler)
+        }
+    )
+
     private fun createRepository(
         store: InMemorySessionStore,
-        engine: MockEngine = MockEngine { respond(status = HttpStatusCode.OK, content = "{}") }
+        engine: MockEngine = createMockEngine { respond(status = HttpStatusCode.OK, content = "{}") }
     ): LoginRepository {
         val authApiClient = AuthApiClient(SonnetApiClient(engine))
         val sessionManager = AuthSessionManager(store, authApiClient)

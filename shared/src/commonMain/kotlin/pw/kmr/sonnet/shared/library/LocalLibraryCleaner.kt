@@ -1,5 +1,5 @@
 package pw.kmr.sonnet.shared.library
 
-interface LocalLibraryCleaner {
+fun interface LocalLibraryCleaner {
     suspend fun clearLocalLibrary()
 }
