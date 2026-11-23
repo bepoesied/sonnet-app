@@ -2,6 +2,7 @@ package pw.kmr.sonnet.shared.auth
 
 import io.ktor.http.URLBuilder
 import io.ktor.http.Url
+import io.ktor.http.parseUrl
 import kotlinx.coroutines.CancellationException
 import pw.kmr.sonnet.shared.core.AppViewModelRepository
 import pw.kmr.sonnet.shared.library.LocalLibraryCleaner
@@ -112,24 +113,17 @@ class LoginRepository(
         authSessionManager.clearPendingLogin()
     }
 
-    internal fun normalizeServerUrl(serverUrl: String): String {
-        val trimmed = serverUrl.trim().trimEnd('/')
-        return if (trimmed.contains("://")) trimmed else "https://$trimmed"
-    }
+    internal fun normalizeServerUrl(serverUrl: String): String =
+        serverUrl.trim().trimEnd('/')
 
     private fun isAllowedUrl(serverUrl: String): Boolean {
-        return try {
-            val url = Url(serverUrl)
-            val scheme = url.protocol.name
-            val host = url.host
-            host.isNotEmpty() &&
-                scheme in setOf("http", "https") &&
-                (!enforcesHttps || scheme == "https") &&
-                url.parameters.isEmpty() &&
-                url.fragment.isEmpty()
-        } catch (_: Exception) {
-            false
-        }
+        val url = parseUrl(serverUrl) ?: return false
+        val scheme = url.protocol.name
+        return url.host.isNotEmpty() &&
+            scheme in setOf("http", "https") &&
+            (!enforcesHttps || scheme == "https") &&
+            url.parameters.isEmpty() &&
+            url.fragment.isEmpty()
     }
 
     private fun Url.matchesRedirectUri(expected: Url): Boolean =
