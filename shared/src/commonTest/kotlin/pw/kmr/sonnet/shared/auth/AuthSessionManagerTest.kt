@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.test.runTest
 import pw.kmr.sonnet.shared.model.AuthSession
-import pw.kmr.sonnet.shared.model.MobileConfig
 import pw.kmr.sonnet.shared.model.SonnetUser
 import pw.kmr.sonnet.shared.model.TokenRefreshResponse
 import pw.kmr.sonnet.shared.remote.ApiException
@@ -17,7 +16,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AuthSessionManagerTest {
@@ -217,36 +215,6 @@ class AuthSessionManagerTest {
 
         assertEquals(listOf("new-access", "new-access"), awaitAll(first, second))
         assertEquals(1, remote.refreshCalls)
-    }
-
-    @Test
-    fun `pending login round trips through session store`() = runTest {
-        val store = FakeSessionStore(null)
-        val manager = AuthSessionManager(store, FakeAuthRemoteDataSource())
-        val pending = PendingLogin(
-            serverUrl = "https://sonnet.example",
-            clientId = "sonnet-mobile",
-            scopes = listOf("openid", "profile"),
-            authorizationEndpoint = "https://auth.example/authorize",
-            tokenEndpoint = "https://auth.example/token",
-            endSessionEndpoint = null,
-            responseType = "code",
-            mobileConfig = MobileConfig(
-                issuer = "https://auth.example",
-                clientId = "sonnet-mobile",
-                authorizationEndpoint = "https://auth.example/authorize",
-                tokenEndpoint = "https://auth.example/token",
-                scopes = listOf("openid", "profile"),
-                responseType = "code",
-                codeChallengeMethodsSupported = listOf("S256")
-            )
-        )
-
-        assertNull(manager.loadPendingLogin())
-        manager.savePendingLogin(pending)
-        assertEquals(pending, manager.loadPendingLogin())
-        manager.clearPendingLogin()
-        assertNull(manager.loadPendingLogin())
     }
 
     private fun testSession(

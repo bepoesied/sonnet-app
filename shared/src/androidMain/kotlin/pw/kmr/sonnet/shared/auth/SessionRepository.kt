@@ -108,13 +108,13 @@ class SessionRepository(private val context: Context) : SessionStore {
     override suspend fun savePendingLogin(pendingLogin: PendingLogin) {
         withContext(Dispatchers.IO) {
             preferences.edit()
-                .putString(PENDING_LOGIN, json.encodeToString(pendingLogin))
+                .putString(PENDING_LOGIN, tokenCrypto.encrypt(json.encodeToString(pendingLogin)))
                 .commit()
         }
     }
 
     override suspend fun loadPendingLogin(): PendingLogin? = withContext(Dispatchers.IO) {
-        val encoded = preferences.getString(PENDING_LOGIN, null) ?: return@withContext null
+        val encoded = getEncryptedString(preferences, PENDING_LOGIN) ?: return@withContext null
         runCatching { json.decodeFromString<PendingLogin>(encoded) }.getOrNull()
     }
 

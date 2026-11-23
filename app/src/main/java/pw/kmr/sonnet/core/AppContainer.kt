@@ -7,10 +7,8 @@ import okio.FileSystem
 import pw.kmr.sonnet.BuildConfig
 import pw.kmr.sonnet.library.AndroidBookDownloadScheduler
 import pw.kmr.sonnet.player.SonnetMediaSessionService
-import pw.kmr.sonnet.shared.auth.AppAuthPlatformProvider
 import pw.kmr.sonnet.shared.auth.AuthSessionManager
 import pw.kmr.sonnet.shared.auth.LoginRepository
-import pw.kmr.sonnet.shared.auth.PlatformAuthProvider
 import pw.kmr.sonnet.shared.auth.SessionRepository
 import pw.kmr.sonnet.shared.data.local.SonnetDatabase
 import pw.kmr.sonnet.shared.data.local.buildSonnetDatabase
@@ -113,11 +111,6 @@ class AppContainer(context: Context) {
         )
     }
 
-    private val platformAuthProviderDelegate = lazy<PlatformAuthProvider> {
-        AppAuthPlatformProvider(applicationContext)
-    }
-    val platformAuthProvider: PlatformAuthProvider by platformAuthProviderDelegate
-
     val loginRepository: LoginRepository by lazy {
         LoginRepository(
             authApiClient = authApiClient,
@@ -185,9 +178,6 @@ class AppContainer(context: Context) {
         }
         if (sonnetApiClientDelegate.isInitialized()) {
             sonnetApiClient.close()
-        }
-        if (platformAuthProviderDelegate.isInitialized()) {
-            (platformAuthProvider as? AppAuthPlatformProvider)?.dispose()
         }
         if (databaseDelegate.isInitialized()) {
             database.close()

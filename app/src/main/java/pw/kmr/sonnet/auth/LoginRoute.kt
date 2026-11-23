@@ -1,6 +1,5 @@
 package pw.kmr.sonnet.auth
 
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -41,18 +41,17 @@ import pw.kmr.sonnet.shared.auth.LoginEffect
 import pw.kmr.sonnet.shared.auth.LoginRepository
 import pw.kmr.sonnet.shared.auth.LoginUiState
 import pw.kmr.sonnet.shared.auth.LoginViewModel
-import pw.kmr.sonnet.shared.auth.PlatformAuthProvider
 import pw.kmr.sonnet.shared.auth.loginViewModelFactory
 
 @Composable
 fun LoginRoute(
     loginRepository: LoginRepository,
-    platformAuthProvider: PlatformAuthProvider,
     onLoginCompleted: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val factory = remember(loginRepository, platformAuthProvider) {
-        loginViewModelFactory(loginRepository, platformAuthProvider)
+    val context = LocalContext.current
+    val factory = remember(loginRepository) {
+        loginViewModelFactory(loginRepository)
     }
     val viewModel: LoginViewModel = viewModel(factory = factory)
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -60,13 +59,16 @@ fun LoginRoute(
     val authLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        viewModel.completeLogin(result.data)
+        viewModel.completeLogin(AuthBrowserActivity.parseResult(result.resultCode, result.data))
     }
 
     LaunchedEffect(viewModel) {
         viewModel.loginEffects.collect { effect ->
             when (effect) {
-                is LoginEffect.OpenAuthBrowser -> authLauncher.launch(effect.authData as Intent)
+                is LoginEffect.OpenAuthBrowser -> authLauncher.launch(
+                    AuthBrowserActivity.createIntent(context, effect.authorizeUrl)
+                )
+
                 is LoginEffect.LoginCompleted -> currentOnLoginCompleted()
             }
         }

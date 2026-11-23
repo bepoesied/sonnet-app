@@ -20,25 +20,16 @@ import pw.kmr.sonnet.shared.model.BookChapter
 import pw.kmr.sonnet.shared.model.BookDetail
 import pw.kmr.sonnet.shared.model.BookSummary
 import pw.kmr.sonnet.shared.model.LoginResponse
-import pw.kmr.sonnet.shared.model.MobileConfig
 import pw.kmr.sonnet.shared.model.RemoteProgress
 import pw.kmr.sonnet.shared.model.SonnetUser
 import pw.kmr.sonnet.shared.model.TokenRefreshResponse
 
 @Serializable
-internal data class MobileConfigDto(
-    val issuer: String,
-    @SerialName("client_id") val clientId: String,
-    @SerialName("authorization_endpoint") val authorizationEndpoint: String,
-    @SerialName("token_endpoint") val tokenEndpoint: String,
-    @SerialName("end_session_endpoint") val endSessionEndpoint: String? = null,
-    val scopes: List<String>,
-    @SerialName("response_type") val responseType: String,
-    @SerialName("code_challenge_methods_supported") val codeChallengeMethodsSupported: List<String>
+internal data class MobileExchangeRequestDto(
+    val code: String,
+    @SerialName("code_verifier") val codeVerifier: String,
+    @SerialName("redirect_uri") val redirectUri: String
 )
-
-@Serializable
-internal data class OidcLoginRequestDto(@SerialName("id_token") val idToken: String)
 
 @Serializable
 internal data class TokenRefreshRequestDto(@SerialName("refresh_token") val refreshToken: String)
@@ -118,17 +109,6 @@ internal data class ProgressUpdateRequestDto(
     @SerialName("chapter_id") val chapterId: String,
     @SerialName("offset_ms") val offsetMillis: Long,
     @SerialName("updated_at") val updatedAt: String
-)
-
-internal fun MobileConfigDto.toModel(): MobileConfig = MobileConfig(
-    issuer = issuer,
-    clientId = clientId,
-    authorizationEndpoint = authorizationEndpoint,
-    tokenEndpoint = tokenEndpoint,
-    endSessionEndpoint = endSessionEndpoint.normalizedOptional(),
-    scopes = scopes,
-    responseType = responseType,
-    codeChallengeMethodsSupported = codeChallengeMethodsSupported
 )
 
 internal fun LoginResponseDto.toModel(serverUrl: String): LoginResponse = LoginResponse(

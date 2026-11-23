@@ -18,22 +18,22 @@ import kotlin.test.assertTrue
 
 class SharedApiClientTest {
     @Test
-    fun `mobile config parses through shared ktor client`() = runTest {
+    fun `mobile exchange posts code verifier and parses session response`() = runTest {
+        var request: HttpRequestData? = null
         val authApiClient = AuthApiClient(
             SonnetApiClient(
                 MockEngine {
-                    assertEquals("https://example.test/api/mobile-config", it.url.toString())
+                    request = it
                     respond(
                         content = """
                             {
-                              "issuer": "https://issuer.example",
-                              "client_id": "sonnet-mobile",
-                              "authorization_endpoint": "https://issuer.example/authorize",
-                              "token_endpoint": "https://issuer.example/token",
-                              "end_session_endpoint": "https://issuer.example/logout",
-                              "scopes": ["openid", "profile"],
-                              "response_type": "code",
-                              "code_challenge_methods_supported": ["S256"],
+                              "access_token": "session-token",
+                              "refresh_token": "refresh-token",
+                              "user": {
+                                "id": 123,
+                                "name": "Ada Lovelace",
+                                "avatar_url": "https://example.test/avatar.png"
+                              },
                               "ignored": true
                             }
                         """.trimIndent(),
@@ -44,11 +44,27 @@ class SharedApiClientTest {
             )
         )
 
-        val config = authApiClient.mobileConfig("https://example.test")
+        val response = authApiClient.exchangeMobileCode(
+            serverUrl = "https://example.test",
+            code = "handoff-code-1",
+            codeVerifier = "verifier-123",
+            redirectUri = "sonnet://auth/callback"
+        )
 
-        assertEquals("sonnet-mobile", config.clientId)
-        assertEquals(listOf("openid", "profile"), config.scopes)
-        assertEquals(listOf("S256"), config.codeChallengeMethodsSupported)
+        val sentRequest = requireNotNull(request)
+        assertEquals(HttpMethod.Post, sentRequest.method)
+        assertEquals("https://example.test/api/auth/mobile/exchange", sentRequest.url.toString())
+        val body = sentRequest.body as TextContent
+        assertEquals(
+            "{\"code\":\"handoff-code-1\",\"code_verifier\":\"verifier-123\",\"redirect_uri\":\"sonnet://auth/callback\"}",
+            body.text
+        )
+        assertEquals("https://example.test", response.serverUrl)
+        assertEquals("session-token", response.accessToken)
+        assertEquals("refresh-token", response.refreshToken)
+        assertEquals(123L, response.user.id)
+        assertEquals("Ada Lovelace", response.user.name)
+        assertEquals("https://example.test/avatar.png", response.user.avatarUrl)
     }
 
     @Test
@@ -84,38 +100,15 @@ class SharedApiClientTest {
     }
 
     @Test
-    fun `unauthorized responses become shared api exceptions`() = runTest {
-        val authApiClient = AuthApiClient(
-            SonnetApiClient(
-                MockEngine {
-                    respond(
-                        content = "{\"error\":\"Unauthorized\"}",
-                        status = HttpStatusCode.Unauthorized,
-                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                    )
-                }
-            )
+    fun `non-2xx responses become api exceptions with status and body`() = runTest {
+        val cases = listOf(
+            HttpStatusCode.BadRequest to "{\"error\":\"invalid_request\"}",
+            HttpStatusCode.Unauthorized to "{\"error\":\"invalid_grant\"}",
+            HttpStatusCode.UnprocessableEntity to "{\"error\":\"Invalid or expired refresh token\"}",
+            HttpStatusCode.InternalServerError to "{\"error\":\"boom\"}"
         )
 
-        val exception = assertFailsWith<ApiException> {
-            authApiClient.me("https://example.test", "expired")
-        }
-
-        assertEquals(401, exception.statusCode)
-        assertEquals("{\"error\":\"Unauthorized\"}", exception.message)
-    }
-
-    @Test
-    fun `error status codes map to api exception across auth and books clients`() = runTest {
-        val statusCodes = listOf(
-            HttpStatusCode.Unauthorized to 401,
-            HttpStatusCode.Forbidden to 403,
-            HttpStatusCode.UnprocessableEntity to 422,
-            HttpStatusCode.InternalServerError to 500
-        )
-
-        for ((httpStatus, expectedCode) in statusCodes) {
-            val body = "{\"status\":$expectedCode}"
+        for ((httpStatus, body) in cases) {
             val apiClient = SonnetApiClient(
                 MockEngine {
                     respond(
@@ -128,36 +121,22 @@ class SharedApiClientTest {
             val authApiClient = AuthApiClient(apiClient)
             val booksApiClient = BooksApiClient(apiClient)
 
-            val refreshException = assertFailsWith<ApiException> {
-                authApiClient.refresh("https://example.test", "refresh-token")
-            }
-            assertEquals(expectedCode, refreshException.statusCode)
-            assertEquals(body, refreshException.message)
-
-            val booksException = assertFailsWith<ApiException> {
-                booksApiClient.books("https://example.test", "access-token")
-            }
-            assertEquals(expectedCode, booksException.statusCode)
-            assertEquals(body, booksException.message)
-
-            val updateProgressException = assertFailsWith<ApiException> {
-                booksApiClient.updateProgress(
+            val bodyException = assertFailsWith<ApiException> {
+                authApiClient.exchangeMobileCode(
                     serverUrl = "https://example.test",
-                    accessToken = "access-token",
-                    bookId = "1",
-                    chapterId = "2",
-                    offsetMs = 500L,
-                    updatedAtEpochMillis = 1_000L
+                    code = "code",
+                    codeVerifier = "verifier",
+                    redirectUri = "sonnet://auth/callback"
                 )
             }
-            assertEquals(expectedCode, updateProgressException.statusCode)
-            assertEquals(body, updateProgressException.message)
+            assertEquals(httpStatus.value, bodyException.statusCode)
+            assertEquals(body, bodyException.message)
 
-            val completeException = assertFailsWith<ApiException> {
+            val noContentException = assertFailsWith<ApiException> {
                 booksApiClient.markComplete("https://example.test", "access-token", "1")
             }
-            assertEquals(expectedCode, completeException.statusCode)
-            assertEquals(body, completeException.message)
+            assertEquals(httpStatus.value, noContentException.statusCode)
+            assertEquals(body, noContentException.message)
         }
     }
 

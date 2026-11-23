@@ -1,7 +1,6 @@
 package pw.kmr.sonnet.shared.auth
 
 import kotlinx.serialization.Serializable
-import pw.kmr.sonnet.shared.model.MobileConfig
 
 data class LoginUiState(
     val serverUrl: String = "",
@@ -10,20 +9,31 @@ data class LoginUiState(
 )
 
 sealed interface LoginEffect {
-    data class OpenAuthBrowser(val authData: Any) : LoginEffect
+    data class OpenAuthBrowser(
+        val authorizeUrl: String,
+        val redirectUri: String
+    ) : LoginEffect
+
     data object LoginCompleted : LoginEffect
+}
+
+sealed interface AuthCallbackResult {
+    data class Callback(val uri: String) : AuthCallbackResult
+    data object Cancelled : AuthCallbackResult
+    data class Failed(val message: String) : AuthCallbackResult
 }
 
 @Serializable
 data class PendingLogin(
     val serverUrl: String,
-    val clientId: String,
-    val scopes: List<String>,
-    val authorizationEndpoint: String,
-    val tokenEndpoint: String,
-    val endSessionEndpoint: String?,
-    val responseType: String,
-    val mobileConfig: MobileConfig
-) {
-    companion object
-}
+    val redirectUri: String,
+    val codeVerifier: String,
+    val state: String
+)
+
+data class PreparedLogin(
+    val pendingLogin: PendingLogin,
+    val authorizeUrl: String
+)
+
+class AuthCallbackException(message: String) : IllegalStateException(message)

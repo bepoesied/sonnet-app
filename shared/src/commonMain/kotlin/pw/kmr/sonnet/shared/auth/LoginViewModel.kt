@@ -18,8 +18,7 @@ import kotlinx.coroutines.withContext
 import pw.kmr.sonnet.shared.remote.ApiException
 
 class LoginViewModel(
-    private val loginRepository: LoginRepository,
-    private val platformAuthProvider: PlatformAuthProvider
+    private val loginRepository: LoginRepository
 ) : ViewModel() {
     private var pendingLogin: PendingLogin? = null
     private var hasUserEditedServerUrl: Boolean = false
@@ -52,66 +51,91 @@ class LoginViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                val pending = loginRepository.fetchMobileConfig(serverUrl)
-                pendingLogin = pending
-                loginRepository.savePendingLogin(pending)
-                val authData = platformAuthProvider.startAuthorization(pending)
+                val prepared = loginRepository.prepareLogin(serverUrl)
+                pendingLogin = prepared.pendingLogin
+                loginRepository.savePendingLogin(prepared.pendingLogin)
                 _uiState.update { it.copy(isLoading = false) }
-                effects.send(LoginEffect.OpenAuthBrowser(authData))
+                effects.send(
+                    LoginEffect.OpenAuthBrowser(
+                        authorizeUrl = prepared.authorizeUrl,
+                        redirectUri = prepared.pendingLogin.redirectUri
+                    )
+                )
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (throwable: Throwable) {
-                pendingLogin = null
-                try {
-                    loginRepository.clearPendingLogin()
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    // Best-effort cleanup after failed start.
-                }
+                clearPendingLoginBestEffort()
                 _uiState.update { it.copy(isLoading = false, errorMessage = throwable.toUserMessage()) }
             }
         }
     }
 
-    fun completeLogin(authResult: Any?) {
+    fun completeLogin(result: AuthCallbackResult) {
         viewModelScope.launch {
-            if (authResult == null) {
-                pendingLogin = null
-                loginRepository.clearPendingLogin()
-                _uiState.update { it.copy(isLoading = false, errorMessage = CANCELLED_MESSAGE) }
-                return@launch
-            }
+            when (result) {
+                AuthCallbackResult.Cancelled -> {
+                    clearPendingLoginBestEffort()
+                    _uiState.update { it.copy(isLoading = false, errorMessage = CANCELLED_MESSAGE) }
+                }
 
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            val pending = pendingLogin ?: loginRepository.loadPendingLogin()
-            if (pending == null) {
-                _uiState.update { it.copy(isLoading = false, errorMessage = CANCELLED_MESSAGE) }
-                return@launch
-            }
+                is AuthCallbackResult.Failed -> {
+                    clearPendingLoginBestEffort()
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = result.message.takeIf { message -> message.isNotBlank() }
+                                ?: DEFAULT_ERROR_MESSAGE
+                        )
+                    }
+                }
 
-            try {
-                val idToken = platformAuthProvider.completeAuthorization(pending, authResult)
-                loginRepository.completeLogin(pending.serverUrl, idToken)
-                pendingLogin = null
-                loginRepository.clearPendingLogin()
-                _uiState.update { it.copy(isLoading = false) }
-                effects.send(LoginEffect.LoginCompleted)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (throwable: Throwable) {
-                _uiState.update { it.copy(isLoading = false, errorMessage = throwable.toUserMessage()) }
+                is AuthCallbackResult.Callback -> {
+                    _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+                    val pending = pendingLogin ?: loginRepository.loadPendingLogin()
+                    if (pending == null) {
+                        clearPendingLoginBestEffort()
+                        _uiState.update { it.copy(isLoading = false, errorMessage = AUTH_FAILED_MESSAGE) }
+                        return@launch
+                    }
+
+                    // Handoff codes are single-use and short-lived; clear pending secrets immediately.
+                    clearPendingLoginBestEffort()
+
+                    try {
+                        loginRepository.completeLogin(pending, result.uri)
+                        _uiState.update { it.copy(isLoading = false) }
+                        effects.send(LoginEffect.LoginCompleted)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (throwable: Throwable) {
+                        _uiState.update { it.copy(isLoading = false, errorMessage = throwable.toUserMessage()) }
+                    }
+                }
             }
+        }
+    }
+
+    private suspend fun clearPendingLoginBestEffort() {
+        pendingLogin = null
+        try {
+            loginRepository.clearPendingLogin()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            // Best-effort cleanup of pending login secrets.
         }
     }
 
     private fun Throwable.toUserMessage(): String {
+        if (this is AuthCallbackException) {
+            return message?.takeIf { it.isNotBlank() } ?: AUTH_FAILED_MESSAGE
+        }
         if (this is IllegalArgumentException) {
             return message?.takeIf { it.isNotBlank() } ?: DEFAULT_ERROR_MESSAGE
         }
         if (this is ApiException) {
             return when (statusCode) {
-                401, 403 -> "Authentication failed. Please sign in again."
+                401, 403 -> AUTH_FAILED_MESSAGE
                 404 -> "Sonnet server endpoint not found. Check the server URL and try again."
                 in 500..599 -> "The server encountered an error. Please try again later."
                 else -> "Server rejected the request (HTTP $statusCode). Check the server URL and try again."
@@ -147,15 +171,15 @@ class LoginViewModel(
 
     private companion object {
         const val CANCELLED_MESSAGE = "Sign in was cancelled."
+        const val AUTH_FAILED_MESSAGE = "Authentication failed. Please sign in again."
         const val DEFAULT_ERROR_MESSAGE = "Sign in failed. Check the server URL and try again."
     }
 }
 
 fun loginViewModelFactory(
-    loginRepository: LoginRepository,
-    platformAuthProvider: PlatformAuthProvider
+    loginRepository: LoginRepository
 ): ViewModelProvider.Factory = viewModelFactory {
     initializer {
-        LoginViewModel(loginRepository, platformAuthProvider)
+        LoginViewModel(loginRepository)
     }
 }

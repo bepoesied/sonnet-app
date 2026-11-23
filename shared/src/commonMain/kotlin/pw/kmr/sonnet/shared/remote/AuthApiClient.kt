@@ -13,22 +13,27 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
 import pw.kmr.sonnet.shared.auth.AuthRemoteDataSource
 import pw.kmr.sonnet.shared.model.LoginResponse
-import pw.kmr.sonnet.shared.model.MobileConfig
 import pw.kmr.sonnet.shared.model.SonnetUser
 import pw.kmr.sonnet.shared.model.TokenRefreshResponse
 
 class AuthApiClient(
     private val apiClient: SonnetApiClient
 ) : AuthRemoteDataSource {
-    suspend fun mobileConfig(serverUrl: String): MobileConfig = apiClient.httpClient
-        .get(serverUrl.apiUrl("mobile-config"))
-        .requireBody<MobileConfigDto>()
-        .toModel()
-
-    suspend fun oidcLogin(serverUrl: String, idToken: String): LoginResponse = apiClient.httpClient
-        .post(serverUrl.apiUrl("auth/oidc-login")) {
+    suspend fun exchangeMobileCode(
+        serverUrl: String,
+        code: String,
+        codeVerifier: String,
+        redirectUri: String
+    ): LoginResponse = apiClient.httpClient
+        .post(serverUrl.apiUrl("auth/mobile/exchange")) {
             header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-            setBody(OidcLoginRequestDto(idToken = idToken))
+            setBody(
+                MobileExchangeRequestDto(
+                    code = code,
+                    codeVerifier = codeVerifier,
+                    redirectUri = redirectUri
+                )
+            )
         }
         .requireBody<LoginResponseDto>()
         .toModel(serverUrl)

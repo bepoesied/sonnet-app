@@ -115,7 +115,6 @@ private fun AppNavHost(
         entry<LoginKey> {
             LoginRoute(
                 loginRepository = appContainer.loginRepository,
-                platformAuthProvider = appContainer.platformAuthProvider,
                 onLoginCompleted = {
                     if (backStack.size > 1) {
                         backStack.removeLastOrNull()

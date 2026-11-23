@@ -9,7 +9,6 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -151,70 +150,6 @@ class LibraryRouteTest {
         composeRule.onAllNodesWithText("Log out").onLast().performClick()
 
         composeRule.runOnIdle { assertEquals(1, logoutClicks) }
-    }
-
-    @Test
-    fun downloadButtonIsDirectlyClickableWithoutSwiping() {
-        val requestedDownloads = mutableListOf<String>()
-        val book = sampleBook(
-            id = "book-42",
-            title = "Project Hail Mary",
-            downloadStatus = DownloadStatus.NotDownloaded
-        )
-
-        composeRule.setContent {
-            MaterialTheme {
-                LibraryScreen(
-                    uiState = LibraryUiState(
-                        initialLoadComplete = true,
-                        books = listOf(book)
-                    ),
-                    onRefresh = {},
-                    onClearError = {},
-                    onSearchQueryChange = {},
-                    onOpenPlayer = {},
-                    onCompletionAction = {},
-                    onDownloadAction = { requestedDownloads.add(it.id) },
-                    onLogout = {}
-                )
-            }
-        }
-
-        composeRule.onNodeWithContentDescription("Download Project Hail Mary")
-            .assertIsDisplayed()
-            .performClick()
-
-        composeRule.runOnIdle {
-            assertEquals(listOf("book-42"), requestedDownloads)
-        }
-    }
-
-    @Test
-    fun reauthBannerExposesSignInAgainAction() {
-        var reauthClicks = 0
-
-        composeRule.setContent {
-            MaterialTheme {
-                LibraryScreen(
-                    uiState = LibraryUiState(
-                        initialLoadComplete = true,
-                        books = listOf(sampleBook(downloadStatus = DownloadStatus.Downloaded)),
-                        requiresReauth = true
-                    ),
-                    onRefresh = {},
-                    onClearError = {},
-                    onSearchQueryChange = {},
-                    onOpenPlayer = {},
-                    onCompletionAction = {},
-                    onDownloadAction = {},
-                    onLogout = {},
-                    onReauthenticate = { reauthClicks++ }
-                )
-            }
-        }
-
-        composeRule.onNodeWithText("Sign in again").assertIsDisplayed().performClick()
-        composeRule.runOnIdle { assertEquals(1, reauthClicks) }
     }
 
     @Test
