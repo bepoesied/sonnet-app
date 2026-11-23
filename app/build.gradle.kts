@@ -16,8 +16,8 @@ android {
         applicationId = "pw.kmr.sonnet"
         minSdk = 33
         targetSdk = 36
-        versionCode = 2
-        versionName = "26.11.22.1"
+        versionCode = 3
+        versionName = "26.11.23.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
