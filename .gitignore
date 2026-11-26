@@ -69,3 +69,15 @@ Thumbs.db
 .devenv*
 .direnv/
 
+# Xcode / iOS
+xcuserdata/
+DerivedData/
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+

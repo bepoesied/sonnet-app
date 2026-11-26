@@ -1,14 +1,13 @@
-package pw.kmr.sonnet.player
+package pw.kmr.sonnet.shared.playback
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import pw.kmr.sonnet.shared.playback.PlaybackOrchestrator
-import pw.kmr.sonnet.shared.playback.PlayerUiState
-import pw.kmr.sonnet.shared.playback.SleepTimerState
 
 class PlayerViewModel(
     private val orchestrator: PlaybackOrchestrator,
@@ -42,14 +41,13 @@ class PlayerViewModel(
     fun keepLocalProgress() = orchestrator.keepLocalProgress()
 
     fun clearError() = orchestrator.clearError()
+}
 
-    class Factory(
-        private val orchestrator: PlaybackOrchestrator,
-        private val bookId: String
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return PlayerViewModel(orchestrator, bookId) as T
-        }
+fun playerViewModelFactory(
+    orchestrator: PlaybackOrchestrator,
+    bookId: String
+): ViewModelProvider.Factory = viewModelFactory {
+    initializer {
+        PlayerViewModel(orchestrator, bookId)
     }
 }
